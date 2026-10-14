@@ -25,7 +25,7 @@ const call = (env,path,method='GET',body) => worker.fetch(new Request(`https://c
 test('D1 routes persist profiles, status, follow-up outcomes and payments',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'campus-d1-')),file=join(dir,'test.db');
  try {
-  execFileSync('python3',['-c',python],{input:JSON.stringify({file,schema:readFileSync('migrations/0001_crm.sql','utf8')+readFileSync('migrations/0002_followup_outcomes.sql','utf8')+readFileSync('migrations/0003_profile_details.sql','utf8')+readFileSync('migrations/0005_property_uploads.sql','utf8')+readFileSync('migrations/0006_student_images.sql','utf8')+readFileSync('migrations/0007_auth.sql','utf8')})});
+  execFileSync('python3',['-c',python],{input:JSON.stringify({file,schema:readFileSync('migrations/0001_crm.sql','utf8')+readFileSync('migrations/0002_followup_outcomes.sql','utf8')+readFileSync('migrations/0003_profile_details.sql','utf8')+readFileSync('migrations/0005_property_uploads.sql','utf8')+readFileSync('migrations/0006_student_images.sql','utf8')+readFileSync('migrations/0007_auth.sql','utf8')+readFileSync('migrations/0008_notifications.sql','utf8')})});
   const objects=new Map(),MEDIA={async put(key,bytes,options){objects.set(key,{bytes:new Uint8Array(bytes),mime:options.httpMetadata.contentType})},async get(key){const object=objects.get(key);return object?{body:object.bytes,httpEtag:'"mock-etag"',writeHttpMetadata(headers){headers.set('Content-Type',object.mime)}}:null},async delete(key){objects.delete(key)}};
   const env={DB:database(file),MEDIA,ASSETS:{fetch:async()=>new Response('asset')}};
   const token=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('a'.repeat(64)))).toString('hex');

@@ -1,7 +1,7 @@
 const find=id=>document.getElementById(id);
 async function authApi(path,body){
  let response;
- try{response=await fetch('/api/auth/'+path,{method:body!==undefined?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})})}catch{throw Error('Cannot reach the sign-in server. Check that the CRM Worker is running and try again.')}
+ try{response=await fetch('/api/auth/'+path,{cache:'no-store',method:body!==undefined?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})})}catch{throw Error('Cannot reach the sign-in server. Check that the CRM Worker is running and try again.')}
  const raw=await response.text(),type=response.headers.get('Content-Type')||'';
  if(!raw.trim()){if(response.status===204)return {};throw Error('The sign-in server returned an empty response. Please retry at http://localhost:3000/login.')}
  if(!type.includes('application/json')||/^\s*</.test(raw))throw Error('This page is not connected to the sign-in API. Open http://localhost:3000/login instead of Live Server.');

@@ -22,5 +22,15 @@
       "bucket_name": "adotrip-campus-crm-images",
       "remote": true
     }
-  ]
+  ],
+  "build": {
+    "command": "node scripts/build.cjs",
+    "watch_dir": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "login.html",
+      "login.js"
+    ]
+  }
 }

@@ -1,0 +1,32 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+test('background refresh updates today schedule and notifications during form editing and restores full rendering afterward',async()=>{
+ const nodes=new Map(),el=selector=>{
+  if(selector==='.modal.show')return null;
+  if(!nodes.has(selector))nodes.set(selector,{value:'',innerHTML:'',textContent:'',hidden:false,dataset:{},style:{},setAttribute(){},querySelector(){return null},classList:{add(){},remove(){},toggle(){}},addEventListener(){}});
+  return nodes.get(selector);
+ };
+ const document={querySelector:el,querySelectorAll:()=>[],addEventListener(){},hidden:false,activeElement:null};
+ let state={students:[{id:'S1',name:'Aditi',budget:323000,agent:'Alice',created_at:new Date().toISOString()}],properties:[],leads:[],payments:[],followups:[]};
+ const context=vm.createContext({document,window:{},staticPreview:true,URLSearchParams,setTimeout,console,fetch:async url=>({ok:true,text:async()=>JSON.stringify(url==='/api/notifications'?{notifications:[{id:'activity-1',title:'Follow-up created',message:'Alice · Callback',created_at:new Date().toISOString(),unread:true}]}:state)})});
+ vm.runInContext(readFileSync('app.js','utf8'),context);
+ vm.runInContext("signedInUser={id:'bob',name:'Bob'};propertiesLoading=false",context);
+ await vm.runInContext('refreshWorkspace()',context);
+ assert.match(el('#todaySchedule').innerHTML,/No pending tasks today/);
+ assert.match(el('#notificationList').innerHTML,/Alice · Callback/);
+ document.activeElement={closest:()=>({tagName:'FORM'})};
+ state={...state,followups:[{id:'F1',student_id:'S1',purpose:'Callback',starts_at:new Date().toISOString(),status:'Pending',priority:'High'}]};
+ await vm.runInContext('refreshWorkspace()',context);
+ assert.match(el('#todaySchedule').innerHTML,/Callback/);
+ assert.equal(el('#todayScheduleCount').textContent,'1 task');
+ assert.equal(vm.runInContext('pendingWorkspaceRender',context),true);
+ document.activeElement=null;
+ await vm.runInContext('refreshWorkspace()',context);
+ assert.equal(vm.runInContext('pendingWorkspaceRender',context),false);
+ state={...state,followups:[{...state.followups[0],status:'Done'}]};
+ await vm.runInContext('refreshWorkspace()',context);
+ assert.match(el('#todaySchedule').innerHTML,/No pending tasks today/);
+ assert.equal(el('#todayScheduleCount').textContent,'0 tasks');
+});

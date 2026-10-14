@@ -1,4 +1,5 @@
 import { handleAuth, sessionUser, requireUser, AuthError } from './auth.mjs';
+import { activityStatement, handleNotifications } from './notifications.mjs';
 import { imageSearch, serveStockPhoto } from './images.mjs';
 const TABLES = ['students', 'properties', 'leads', 'followups', 'payments'];
 const STATUSES = ['New Lead', 'Contacted', 'Interested', 'Follow-up Required', 'Converted', 'Lost'];
@@ -38,7 +39,7 @@ async function serveMedia(request,env,kind,recordId){
  if(new URL(request.url).searchParams.get('download')==='1'){const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[headers.get('Content-Type')]||'jpg';headers.set('Content-Disposition',`attachment; filename="${kind}-${recordId}.${ext}"`)}
  return new Response(object.body,{headers});
 }
-async function handleApi(request, env, path) {
+async function handleApi(request, env, path, user) {
   const db = env.DB;
   if (!db) throw new HttpError(503, 'Cloudflare D1 binding is missing');
   if (request.method === 'GET') {
@@ -56,18 +57,18 @@ async function handleApi(request, env, path) {
   let x; try { x = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON'); }
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw new HttpError(400, 'Expected a JSON object');
   if (request.method === 'POST') {
-    if (path === '/api/students') { const photo=parsePhoto(x.image_data),recordId=id('STU'),record=studentInsert(db,x,photo?`/api/media/students/${recordId}`:null,recordId);await persistPhoto(env,`students/${recordId}`,photo,()=>record.statement.run());return json({id:recordId},201); }
+    if (path === '/api/students') { const photo=parsePhoto(x.image_data),recordId=id('STU'),record=studentInsert(db,x,photo?`/api/media/students/${recordId}`:null,recordId);await persistPhoto(env,`students/${recordId}`,photo,()=>db.batch([record.statement,activityStatement(db,user,'students','created',{...x,id:recordId})]));return json({id:recordId},201); }
     if (path === '/api/students/import') {
       if (!Array.isArray(x.rows) || x.rows.length > 1000) throw new HttpError(400, 'Import up to 1,000 rows at a time');
       let added = 0, skipped = 0;
-      for (const row of x.rows) { try { await studentInsert(db, row).statement.run(); added++; } catch (error) { if (error instanceof HttpError || /UNIQUE constraint/.test(error.message)) skipped++; else throw error; } }
+      for (const row of x.rows) { try { const record=studentInsert(db,row);await db.batch([record.statement,activityStatement(db,user,'students','created',{...row,id:record.id})]); added++; } catch (error) { if (error instanceof HttpError || /UNIQUE constraint/.test(error.message)) skipped++; else throw error; } }
       return json({ added, skipped });
     }
     if (path === '/api/properties') {
       const recordId = id('PROP');
       const photo=parsePhoto(x.image_data);
-      const record=stmt(db,'INSERT INTO properties(id,name,location,price,type,rooms,amenities,image,image_query) VALUES(?,?,?,?,?,?,?,?,?)',[recordId,required(x.name,'Name'),required(x.location,'Location'),number(x.price,'Price'),optional(x.type),number(x.rooms,'Rooms'),optional(x.amenities),photo?`/api/media/properties/${recordId}`:null,optional(x.image_query)||`${x.location} India hotel ${x.type||'room'} interior`]);
-      await persistPhoto(env,`properties/${recordId}`,photo,()=>record.run());
+      const record=stmt(db,'INSERT INTO properties(id,name,location,price,type,rooms,amenities,image,image_query) VALUES(?,?,?,?,?,?,?,?,?)',[recordId,required(x.name,'Name'),required(x.location,'Location'),number(x.price,'Price'),optional(x.type),number(x.rooms,'Rooms'),optional(x.amenities),photo?`/api/media/properties/${recordId}`:null,optional(x.image_query)||`${x.location} furnished serviced apartment ${x.type||'studio'} interior`]);
+      await persistPhoto(env,`properties/${recordId}`,photo,()=>db.batch([record,activityStatement(db,user,'properties','created',{...x,id:recordId})]));
       return json({ id: recordId }, 201);
     }
     if (['/api/leads', '/api/followups', '/api/payments'].includes(path)) {
@@ -76,15 +77,15 @@ async function handleApi(request, env, path) {
       const recordId = id(path === '/api/leads' ? 'LEAD' : path === '/api/followups' ? 'FU' : 'TXN');
       if (path === '/api/leads') {
         const status = choice(x.status || 'New Lead', STATUSES, 'status');
-        await db.batch([stmt(db, 'INSERT INTO leads(id,student_id,property_id,status,followup,notes) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, optional(x.property_id), status, optional(x.followup), optional(x.notes)]), stmt(db, 'UPDATE students SET status=? WHERE id=?', [status, x.student_id])]);
+        await db.batch([stmt(db, 'INSERT INTO leads(id,student_id,property_id,status,followup,notes) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, optional(x.property_id), status, optional(x.followup), optional(x.notes)]), stmt(db, 'UPDATE students SET status=? WHERE id=?', [status, x.student_id]),activityStatement(db,user,'leads','created',{...x,id:recordId})]);
       } else if (path === '/api/followups') {
         const date = required(x.starts_at, 'Date and time'); if (Number.isNaN(Date.parse(date))) throw new HttpError(400, 'Invalid follow-up date');
-        await stmt(db, 'INSERT INTO followups(id,student_id,starts_at,purpose,priority,status) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, date, choice(x.purpose, ['Callback', 'Property discussion', 'Property visit', 'Payment reminder'], 'purpose'), choice(x.priority || 'Medium', ['Low', 'Medium', 'High'], 'priority'), 'Pending']).run();
+        const followup=stmt(db, 'INSERT INTO followups(id,student_id,starts_at,purpose,priority,status) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, date, choice(x.purpose, ['Callback', 'Property discussion', 'Property visit', 'Payment reminder'], 'purpose'), choice(x.priority || 'Medium', ['Low', 'Medium', 'High'], 'priority'), 'Pending']);await db.batch([followup,activityStatement(db,user,'followups','created',{...x,id:recordId})]);
       } else {
         const status = choice(x.status, ['Successful', 'Pending', 'Failed', 'Refunded'], 'payment status');
         const statements = [stmt(db, 'INSERT INTO payments(id,student_id,property_id,amount,status,booking) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, optional(x.property_id), number(x.amount, 'Amount'), status, status === 'Successful' ? 'Confirmed' : 'On hold'])];
         if (status === 'Successful') statements.push(stmt(db, "UPDATE leads SET status='Converted' WHERE student_id=? AND property_id=?", [x.student_id, optional(x.property_id)]), stmt(db, "UPDATE students SET status='Converted' WHERE id=?", [x.student_id]));
-        await db.batch(statements);
+        statements.push(activityStatement(db,user,'payments','created',{...x,id:recordId}));await db.batch(statements);
       }
       return json({ id: recordId }, 201);
     }
@@ -96,19 +97,26 @@ async function handleApi(request, env, path) {
       if (table === 'followups') {
         const status = choice(x.status, ['Pending', 'Done'], 'follow-up status');
         const outcome = status === 'Done' ? required(x.outcome, 'Follow-up outcome') : optional(x.outcome);
-        await stmt(db, 'UPDATE followups SET status=?,outcome=?,completed_at=? WHERE id=?', [status, outcome, status === 'Done' ? new Date().toISOString() : null, recordId]).run();
+        const update=stmt(db, 'UPDATE followups SET status=?,outcome=?,completed_at=? WHERE id=?', [status, outcome, status === 'Done' ? new Date().toISOString() : null, recordId]);const previous=await stmt(db,'SELECT * FROM followups WHERE id=?',[recordId]).first();await db.batch([update,activityStatement(db,user,'followups','updated',{...previous,...x})]);
       } else {
         const status = choice(x.status, STATUSES, 'status');
         const statements = [stmt(db, `UPDATE ${table} SET status=? WHERE id=?`, [status, recordId])];
         if (table === 'leads') statements.push(stmt(db, 'UPDATE students SET status=? WHERE id=(SELECT student_id FROM leads WHERE id=?)', [status, recordId]));
         // A profile status update keeps all active opportunities in step.
         else statements.push(stmt(db, "UPDATE leads SET status=? WHERE student_id=? AND status NOT IN ('Converted','Lost')", [status, recordId]));
-        await db.batch(statements);
+        const previous=await stmt(db,`SELECT * FROM ${table} WHERE id=?`,[recordId]).first();statements.push(activityStatement(db,user,table,'updated',{...previous,...x,label:null}));await db.batch(statements);
       }
       return json({ ok: true });
     }
   }
   throw new HttpError(404, 'Route not found');
+}
+async function serveAppAsset(request, env) {
+ const response=await env.ASSETS.fetch(request);
+ const headers=new Headers(response.headers);
+ headers.set('Cache-Control','no-store');
+ headers.set('CDN-Cache-Control','no-store');
+ return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }
 export default {
  async fetch(request,env,context){
@@ -116,13 +124,14 @@ export default {
   try{
    if(path.startsWith('/api/auth/'))return await handleAuth(request,env,path);
    const publicFiles=['/login','/login.html','/login.js','/styles.css','/favicon.ico'];
-   if(publicFiles.includes(path))return env.ASSETS.fetch(request)
+   if(publicFiles.includes(path))return serveAppAsset(request,env)
    const user=await sessionUser(request,env);
-   if(!path.startsWith('/api/')){if(!user||user.must_change_password)return Response.redirect(url.origin+'/login'+(user?.must_change_password?'?change=1':''),302);return env.ASSETS.fetch(request)}
+   if(!path.startsWith('/api/')){if(!user||user.must_change_password)return Response.redirect(url.origin+'/login'+(user?.must_change_password?'?change=1':''),302);return serveAppAsset(request,env)}
    requireUser(user);
+   if(path.startsWith('/api/notifications'))return await handleNotifications(request,env,user,path);
    if(path==='/api/images/file'&&request.method==='GET')return serveStockPhoto(request,env,context);
    if(path==='/api/images'&&request.method==='GET')return imageSearch(request,env,context);
-   return await handleApi(request,env,path);
+   return await handleApi(request,env,path,user);
   }catch(error){
    if(error instanceof AuthError||error instanceof HttpError)return json({error:error.message},error.status);
    if(/UNIQUE constraint/.test(error.message))return json({error:'Duplicate email or mobile'},409);

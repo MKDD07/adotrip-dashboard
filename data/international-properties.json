@@ -1,0 +1,86 @@
+[
+  {
+    "id": "DEMO-PROP-001",
+    "name": "Bloomsbury Serviced Apartments",
+    "location": "Bloomsbury, London, United Kingdom",
+    "price": 307200
+  },
+  {
+    "id": "DEMO-PROP-002",
+    "name": "Downtown Toronto Serviced Studios",
+    "location": "Downtown Toronto, Toronto, Canada",
+    "price": 197200
+  },
+  {
+    "id": "DEMO-PROP-003",
+    "name": "Carlton Serviced Apartments",
+    "location": "Carlton, Melbourne, Australia",
+    "price": 238000
+  },
+  {
+    "id": "DEMO-PROP-004",
+    "name": "Oxford Road Serviced Apartments",
+    "location": "Oxford Road, Manchester, United Kingdom",
+    "price": 217600
+  },
+  {
+    "id": "DEMO-PROP-005",
+    "name": "Kitsilano Serviced Apartments",
+    "location": "Kitsilano, Vancouver, Canada",
+    "price": 217600
+  },
+  {
+    "id": "DEMO-PROP-006",
+    "name": "Ultimo Serviced Apartments",
+    "location": "Ultimo, Sydney, Australia",
+    "price": 306000
+  },
+  {
+    "id": "DEMO-PROP-007",
+    "name": "Rathmines Serviced Apartments",
+    "location": "Rathmines, Dublin, Ireland",
+    "price": 270000
+  },
+  {
+    "id": "DEMO-PROP-008",
+    "name": "Charlottenburg Serviced Apartments",
+    "location": "Charlottenburg, Berlin, Germany",
+    "price": 172800
+  },
+  {
+    "id": "DEMO-PROP-009",
+    "name": "Latin Quarter Serviced Studios",
+    "location": "Latin Quarter, Paris, France",
+    "price": 226800
+  },
+  {
+    "id": "DEMO-PROP-010",
+    "name": "West End Serviced Apartments",
+    "location": "West End, Brisbane, Australia",
+    "price": 217600
+  },
+  {
+    "id": "PROP-201",
+    "name": "Camden Serviced Apartments",
+    "location": "Camden, London, United Kingdom",
+    "price": 294400
+  },
+  {
+    "id": "PROP-202",
+    "name": "Waterloo Serviced Studios",
+    "location": "Waterloo, Ontario, Canada",
+    "price": 149600
+  },
+  {
+    "id": "PROP-203",
+    "name": "Newington Serviced Apartments",
+    "location": "Newington, Edinburgh, United Kingdom",
+    "price": 243200
+  },
+  {
+    "id": "PROP-204",
+    "name": "Selly Oak Serviced Apartments",
+    "location": "Selly Oak, Birmingham, United Kingdom",
+    "price": 192000
+  }
+]
