@@ -1,4 +1,5 @@
 import { handleAuth, sessionUser, requireUser, AuthError } from './auth.mjs';
+import { handleMessages } from './messages.mjs';
 import { activityStatement, handleNotifications } from './notifications.mjs';
 import { imageSearch, serveStockPhoto } from './images.mjs';
 const TABLES = ['students', 'properties', 'leads', 'followups', 'payments'];
@@ -128,6 +129,7 @@ export default {
    const user=await sessionUser(request,env);
    if(!path.startsWith('/api/')){if(!user||user.must_change_password)return Response.redirect(url.origin+'/login'+(user?.must_change_password?'?change=1':''),302);return serveAppAsset(request,env)}
    requireUser(user);
+   if(path==='/api/team'||path.startsWith('/api/team/')||path.startsWith('/api/messages/'))return await handleMessages(request,env,user,path);
    if(path.startsWith('/api/notifications'))return await handleNotifications(request,env,user,path);
    if(path==='/api/images/file'&&request.method==='GET')return serveStockPhoto(request,env,context);
    if(path==='/api/images'&&request.method==='GET')return imageSearch(request,env,context);

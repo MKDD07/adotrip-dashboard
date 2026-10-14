@@ -30,10 +30,10 @@
             </nav>
             <p class="nav-caption nav-caption-layout-2">MANAGE</p>
             <nav class="nav nav-layout"><button class="nav-link" data-view="settings"><i data-lucide="settings"></i><span>Settings</span></button></nav>
-            <div class="support-card support-card-layout">
-                <div class="support-icon"><i data-lucide="headphones"></i></div><strong>Need assistance?</strong>
-                <p>Adotrip support is here to help.</p><button class="btn btn-dark btn-sm btn-dark-layout">Contact support</button>
-            </div>
+            <section class="team-directory" aria-labelledby="teamDirectoryTitle">
+                <div class="team-directory-heading"><h3 id="teamDirectoryTitle">Team</h3><span id="teamDirectoryCount"></span></div>
+                <div id="teamDirectoryList" class="team-directory-list"><p class="team-directory-empty">Loading team…</p></div>
+            </section>
             <div class="user-card user-card-layout"><img src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23eeeee7%22/%3E%3C/svg%3E" id="accountAvatar" data-target="account-manager" data-query="Indian man professional portrait" data-kind="account" alt="Illustrative photo" loading="lazy">
                 <div class="flexible-content"><strong id="accountName">Team member</strong><small id="accountRole">Signed in</small></div><button class="icon-btn topbar-btn" id="logoutBtn" aria-label="Sign out" title="Sign out"><i data-lucide="log-out"></i></button>
             </div>
@@ -311,7 +311,7 @@
 
                 </div>
                 <img class="hero-background" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23eeeee7%22/%3E%3C/svg%3E" data-target="settings-workspace-hero" data-query="bright furnished serviced apartment living room interior" data-kind="other" alt="" aria-hidden="true" loading="lazy">
-                <div class="workspace-hero-footer"><div class="hero-actions"><button class="btn btn-dark" data-open-view="dashboard"><i data-lucide="arrow-up-right"></i>Open dashboard</button></div><div class="hero-facts" id="settingsHeroFacts"></div></div>
+                <div class="workspace-hero-footer"><div class="hero-actions"><button class="btn btn-dark" data-open-view="dashboard"><i data-lucide="arrow-up-right"></i>Open dashboard</button><button type="button" class="btn btn-light" id="exportBtn"><i data-lucide="download"></i>Export data</button></div><div class="hero-facts" id="settingsHeroFacts"></div></div>
             </div>
             <section id="accountSettings" class="panel account-settings" hidden>
                 <div class="panel-head"><span class="panel-kicker">TEAM ACCESS</span>
@@ -333,15 +333,6 @@
                         <p class="copy-layout-2" id="imageStatus">Photos are searched through the server.</p>
                         <p class="copy-layout-2">For production, move secrets to server environment variables.</p>
                         <form id="keyForm" class="settings-form-layout"><label>Payment gateway key<input class="form-control form-control-layout" name="paymentKey" placeholder="Razorpay / Stripe key"></label><label>Messaging API key<input class="form-control form-control-layout" name="messageKey" placeholder="WhatsApp / SMS key"></label><button class="btn btn-brand btn-brand-layout-2">Save keys</button></form>
-                    </div>
-                </div>
-                <div class="settings-detail-column">
-                    <div class="panel panel-layout-2">
-                        <h3>Cloudflare D1 database</h3>
-                        <p class="copy-layout-2">Records are stored in Cloudflare D1 through the CRM API.</p>
-                        <div class="database-row"><i data-lucide="database"></i>
-                            <div><strong>Connection</strong><small id="dbStatus">Connecting to Cloudflare D1…</small></div>
-                        </div><button class="btn btn-outline-secondary btn-outline-secondary-layout" id="exportBtn"><i data-lucide="download"></i>Export JSON</button>
                     </div>
                 </div>
             </div>
@@ -486,6 +477,13 @@
         </div>
     </div>
 
+    <section id="messagePanel" class="message-panel" role="dialog" aria-labelledby="messagePanelName" hidden>
+        <header class="message-panel-header"><div><h3 id="messagePanelName">Message</h3><small id="messagePanelRole"></small></div><button type="button" id="closeMessagePanel" class="message-icon-btn" aria-label="Close messages"><i data-lucide="x"></i></button></header>
+        <div id="messageList" class="message-list" aria-live="polite" aria-relevant="additions text"></div>
+        <p id="messageError" class="message-error" role="alert" hidden></p>
+        <form id="directMessageForm" class="message-compose"><label class="visually-hidden" for="directMessageBody">Message</label><textarea id="directMessageBody" name="body" rows="2" maxlength="2000" required placeholder="Write a message…"></textarea><button type="submit" class="message-send-btn" aria-label="Send message"><i data-lucide="send"></i></button></form>
+    </section>
+    <div id="teamMessageTooltip" class="team-message-tooltip" role="tooltip" hidden></div>
     <div class="toast-container toast-container-layout">
         <div class="toast" id="appToast">
             <div class="toast-body toast-body-layout"><i data-lucide="circle-check"></i><span id="toastText"></span></div>

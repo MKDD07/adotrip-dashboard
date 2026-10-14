@@ -8335,3 +8335,55 @@ button, input, select, textarea { font-family: inherit; }
 .property-card-booked .property-person-booked small { color: #61666e; }
 .property-card-booked .property-image > img[data-image-state="loading"],
 .property-card-booked .property-image > img[data-target]:not([data-image-state="loaded"]):not([data-image-state="unavailable"]) { opacity: 0; }
+
+/* Sidebar team directory and private conversations. */
+.team-directory { margin: auto 8px 0; padding-top: 24px; }
+.team-directory-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 12px; }
+.team-directory-heading h3 { margin: 0; font-size: var(--text-body); font-weight: 500; }
+.team-directory-heading > span { font-size: var(--text-caption); color: var(--muted); }
+.team-directory-list { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; padding: 2px; }
+.team-person-row { position: relative; }
+.team-person-card { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 24px 9px 7px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); text-align: left; }
+.team-person-card:hover:not(:disabled) { background: #f5f6f7; }
+.team-person-card:disabled { opacity: .65; }
+.team-person-avatar { flex: 0 0 32px; width: 32px; height: 32px; }
+.team-person-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.team-person-info { flex: 1; min-width: 0; }
+.team-person-info strong { display: block; font-size: var(--text-caption); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-person-info small { display: block; font-size: var(--text-caption); color: var(--muted); margin-top: 3px; }
+.team-person-action { width: 15px; height: 15px; flex-shrink: 0; color: #969ba3; }
+.team-unread-dot { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 20px; height: 28px; border: 0; background: transparent; padding: 0; }
+.team-unread-dot::after { content: ''; display: block; width: 7px; height: 7px; margin: auto; border-radius: 50%; background: #d5b300; }
+.team-person-card:focus-visible,.team-unread-dot:focus-visible,.message-icon-btn:focus-visible,.message-send-btn:focus-visible { outline: 2px solid #315d94; outline-offset: 2px; }
+.team-directory-empty { padding: 8px; margin: 0; font-size: var(--text-caption); color: var(--muted); }
+.team-message-tooltip { position: fixed; z-index: 1100; width: 250px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.1); color: var(--ink); font-size: var(--text-caption); line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; }
+.team-message-tooltip[hidden],.message-panel[hidden],.message-error[hidden] { display: none; }
+.message-panel { position: fixed; bottom: 20px; right: 20px; z-index: 1055; width: 360px; max-width: calc(100vw - 24px); height: 440px; max-height: calc(100dvh - 90px); display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px rgba(23,24,27,.14); overflow: hidden; }
+.message-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); }
+.message-panel-header h3 { margin: 0; font-size: var(--text-body); font-weight: 500; }
+.message-panel-header small { display: block; margin-top: 3px; font-size: var(--text-caption); color: var(--muted); }
+.message-icon-btn { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.message-icon-btn svg { width: 17px; height: 17px; }
+.message-list { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.direct-message { align-self: flex-start; max-width: 88%; }
+.direct-message p { margin: 0; padding: 9px 12px; border-radius: 8px; background: #f3f4f5; font-size: var(--text-caption); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.direct-message small { display: block; margin-top: 4px; font-size: var(--text-caption); color: var(--muted); }
+.direct-message-own { align-self: flex-end; }
+.direct-message-own p { background: #fff8d1; }
+.direct-message-own small { text-align: right; }
+.message-empty { margin: auto; font-size: var(--text-caption); color: var(--muted); }
+.message-compose { display: flex; align-items: flex-end; gap: 10px; padding: 12px; border-top: 1px solid var(--line); }
+.message-compose textarea { flex: 1; min-width: 0; resize: none; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: var(--text-caption); line-height: 1.5; outline-color: #c2aa00; }
+.message-send-btn { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border: 0; border-radius: 6px; background: var(--brand); color: var(--ink); }
+.message-send-btn svg { width: 16px; height: 16px; }
+.message-send-btn:disabled { opacity: .5; }
+.message-error { margin: 0; padding: 8px 12px; color: #a33; font-size: var(--text-caption); }
+@media (max-width: 767px) { .message-panel { bottom: 12px; right: 12px; } }
+
+/* Presence is separate from the unread-message indicator. */
+.team-person-avatar { position: relative; }
+.team-presence-dot { position: absolute; bottom: -1px; right: -1px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; }
+.team-presence-online { background: #328456; }
+.team-presence-offline { background: #ce4c4c; }
+#settingsView .settings-main-column { width: 100%; }
+.team-retry-btn { justify-self: start; margin: 0 8px 8px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font-size: var(--text-caption); }

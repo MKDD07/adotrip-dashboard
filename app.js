@@ -44,8 +44,8 @@ const api=async(url,options={})=>{let r;try{r=await fetch(API_ORIGIN+url,{cache:
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN'),esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])),find=(type,id)=>data[type].find(x=>x.id===id)||{};
 function statusBadge(value){const c=['Converted','Successful','Confirmed','Done'].includes(value)?'green':['Interested','Pending','Follow-up Required','On hold'].includes(value)?'amber':['Lost','Failed','Refunded'].includes(value)?'red':['Contacted','High'].includes(value)?'blue':'gray';return `<span class="status ${c}">${esc(value)}</span>`}
 function icons(){window.lucide?.createIcons();hydrateImages()};function notify(message){$('#toastText').textContent=message;icons();if(window.bootstrap)bootstrap.Toast.getOrCreateInstance($('#appToast'),{delay:2500}).show();else{$('#appToast').classList.add('show');setTimeout(()=>$('#appToast').classList.remove('show'),2500)}};function closeModal(id){bootstrap.Modal.getInstance($(id))?.hide()}
-async function load(){if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;$('#dbStatus').textContent='Connected · Cloudflare D1';$('#dataNotice').hidden=true;render();if(signedInUser)await refreshNotifications().catch(()=>{});}
-function showDataError(error){if(propertiesLoading){propertiesLoading=false;propertiesError=true;renderProperties()} $('#dbStatus').textContent='Database connection unavailable';$('#dataNoticeText').textContent=error.message;$('#dataNotice').hidden=false;}
+async function load(){if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;$('#dataNotice').hidden=true;render();if(signedInUser)await refreshNotifications().catch(()=>{});}
+function showDataError(error){if(propertiesLoading){propertiesLoading=false;propertiesError=true;renderProperties()} $('#dataNoticeText').textContent=error.message;$('#dataNotice').hidden=false;}
 $('#retryData').onclick=()=>load().catch(showDataError);
 function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderCharts();icons()}
 let dashboardPeriod='month';
@@ -343,6 +343,80 @@ $('#profileBody').addEventListener('submit',async event=>{
 $('#logoutBtn').onclick=async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});location.replace('/login')};
 $('#createAccountForm').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;$('#accountCreateError').hidden=true;try{const result=await api('/api/auth/users',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(event.target)))});$('#starterLoginEmail').textContent=result.email;$('#starterLoginPassword').value=result.temporary_password;$('#starterLoginResult').hidden=false;event.target.reset()}catch(error){$('#accountCreateError').textContent=error.message;$('#accountCreateError').hidden=false}finally{button.disabled=false}};
 $('#clearStarterLogin').onclick=()=>{$('#starterLoginPassword').value='';$('#starterLoginResult').hidden=true};
+let teamMembers=[],activeChatId=null,chatSignature='',chatRefreshing=false,chatReturnFocus=null;
+function renderTeam(){
+ const list=$('#teamDirectoryList');if(!list)return;
+ const members=teamMembers.filter(member=>member.id!==signedInUser?.id);
+ $('#teamDirectoryCount').textContent=members.length;
+ list.innerHTML=members.map(member=>{
+  const avatar=member.avatar_url?`<img src="${esc(member.avatar_url)}" alt="" loading="lazy">`:`<img src="${imagePlaceholder(member.name)}" alt="">`;
+  return `<div class="team-person-row"><button type="button" class="team-person-card" data-message-user="${esc(member.id)}" aria-label="Message ${esc(member.name)}, ${member.online?'online':'offline'}"><span class="team-person-avatar">${avatar}<span class="team-presence-dot ${member.online?'team-presence-online':'team-presence-offline'}" role="img" aria-label="${member.online?'Online':'Offline'}" title="${member.online?'Online':'Offline'}"></span></span><span class="team-person-info"><strong>${esc(member.name)}</strong><small>${member.role==='admin'?'Admin':'Team member'}</small></span><i data-lucide="message-circle" class="team-person-action" aria-hidden="true"></i></button>${member.unread_count?`<button type="button" class="team-unread-dot" data-message-user="${esc(member.id)}" data-message-preview="${esc(member.unread_preview||'New message')}" data-unread-count="${member.unread_count}" aria-label="${member.unread_count} unread messages from ${esc(member.name)}" aria-describedby="teamMessageTooltip"></button>`:''}</div>`;
+ }).join('')||'<p class="team-directory-empty">No other team members yet.</p>';icons();
+}
+async function refreshTeam(){
+ if(!signedInUser)return;
+ try{
+  const [,result]=await Promise.allSettled([
+   !document.hidden?api('/api/team/presence',{method:'POST',body:'{}'}):Promise.resolve(),
+   api('/api/team')
+  ]);
+  if(result.status==='rejected')throw result.reason;
+  const out=result.value;if(!Array.isArray(out.users))throw Error('Unable to load team');
+  const changed=JSON.stringify(teamMembers)!==JSON.stringify(out.users);teamMembers=out.users;
+  if(changed||!$('#teamDirectoryList').querySelector?.('.team-person-card'))renderTeam();
+  if(activeChatId&&!document.hidden)await refreshConversation();
+ }catch(error){
+  console.warn('Team directory refresh failed:',error.message);
+  if(!teamMembers.length)$('#teamDirectoryList').innerHTML=`<p class="team-directory-empty">${esc(error.message)}</p><button type="button" class="team-retry-btn" data-team-retry>Retry</button>`;
+  if(activeChatId)showMessageError(error.message);
+ }
+}
+function showMessageError(text){const error=$('#messageError');error.textContent=text;error.hidden=false}
+async function refreshConversation(){
+ if(!activeChatId||chatRefreshing||document.hidden)return;chatRefreshing=true;const target=activeChatId;
+ try{
+  const out=await api('/api/messages/'+encodeURIComponent(target));if(target!==activeChatId)return;
+  if(!Array.isArray(out.messages))throw Error('Unable to load messages');
+  $('#messagePanelName').textContent=out.member.name;$('#messagePanelRole').textContent=out.member.role==='admin'?'Admin':'Team member';
+  const list=$('#messageList'),signature=JSON.stringify(out.messages),nearBottom=!chatSignature||list.scrollHeight-list.scrollTop-list.clientHeight<60;
+  if(signature!==chatSignature){
+   list.innerHTML=out.messages.map(message=>`<article class="direct-message ${message.sender_id===signedInUser.id?'direct-message-own':''}"><p>${esc(message.body)}</p><small>${new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}).format(new Date(message.created_at))}${message.sender_id===signedInUser.id?' · '+(message.read_at?'Read':'Sent'):''}</small></article>`).join('')||'<p class="message-empty">Start a conversation.</p>';
+   chatSignature=signature;if(nearBottom)list.scrollTop=list.scrollHeight;
+  }
+  const unread=out.messages.filter(message=>message.recipient_id===signedInUser.id&&!message.read_at);
+  if(unread.length&&!document.hidden&&target===activeChatId){
+   await api('/api/messages/'+encodeURIComponent(target)+'/read',{method:'POST',body:JSON.stringify({ids:unread.map(message=>message.id)})});
+   const member=teamMembers.find(member=>member.id===target);if(member){member.unread_count=Math.max(0,member.unread_count-unread.length);renderTeam()}
+  }
+  $('#messageError').hidden=true;
+ }catch(error){if(target===activeChatId)showMessageError(error.message)}finally{chatRefreshing=false}
+}
+async function openDirectMessage(userId){
+ if(userId===signedInUser?.id)return;
+ if(!activeChatId)chatReturnFocus=document.activeElement;
+ activeChatId=userId;chatSignature='';$('#messagePanel').hidden=false;$('#messageList').innerHTML='<p class="message-empty">Loading conversation…</p>';$('#messageError').hidden=true;$('#directMessageBody').value='';$('#teamMessageTooltip').hidden=true;
+ const member=teamMembers.find(member=>member.id===userId);$('#messagePanelName').textContent=member?.name||'Message';
+ await refreshConversation();$('#directMessageBody').focus();
+}
+$('#closeMessagePanel').onclick=()=>{activeChatId=null;chatSignature='';$('#messagePanel').hidden=true;chatReturnFocus?.focus?.()};
+$('#teamDirectoryList').addEventListener('click',event=>{if(event.target.closest('[data-team-retry]')){refreshTeam();return}const button=event.target.closest('[data-message-user]');if(button&&!button.disabled)openDirectMessage(button.dataset.messageUser)});
+function showTeamTooltip(dot){
+ const tooltip=$('#teamMessageTooltip'),rect=dot.getBoundingClientRect();tooltip.textContent=`${dot.dataset.unreadCount} unread · ${dot.dataset.messagePreview}`;tooltip.hidden=false;
+ tooltip.style.left=Math.max(8,Math.min(rect.right+12,window.innerWidth-268))+'px';tooltip.style.top=Math.max(8,Math.min(rect.top,window.innerHeight-tooltip.offsetHeight-8))+'px';
+}
+$('#teamDirectoryList').addEventListener('mouseover',event=>{const dot=event.target.closest('.team-unread-dot');if(dot)showTeamTooltip(dot)});
+$('#teamDirectoryList').addEventListener('mouseout',event=>{if(event.target.closest('.team-unread-dot'))$('#teamMessageTooltip').hidden=true});
+$('#teamDirectoryList').addEventListener('focusin',event=>{const dot=event.target.closest('.team-unread-dot');if(dot)showTeamTooltip(dot)});
+$('#teamDirectoryList').addEventListener('focusout',()=>{$('#teamMessageTooltip').hidden=true});
+$('#teamDirectoryList').addEventListener('scroll',()=>{$('#teamMessageTooltip').hidden=true});
+$('#directMessageForm').onsubmit=async event=>{
+ event.preventDefault();const target=activeChatId,body=$('#directMessageBody').value.trim();if(!target||!body)return;
+ const button=event.target.querySelector('button[type="submit"]');button.disabled=true;$('#messageError').hidden=true;
+ try{await api('/api/messages/'+encodeURIComponent(target),{method:'POST',body:JSON.stringify({body})});if(target===activeChatId){$('#directMessageBody').value='';await refreshConversation()}}
+ catch(error){showMessageError(error.message)}finally{button.disabled=false}
+};
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&activeChatId)$('#closeMessagePanel').click()});
+
 let activeNotifFilter='all',notifications=[],notificationError='';
 async function refreshNotifications(){
  try{const out=await api('/api/notifications');if(!Array.isArray(out.notifications))throw Error('Unable to load notifications');notifications=out.notifications.map(item=>({...item,time:item.time||new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}).format(new Date(item.created_at))}));notificationError='';renderNotifications()}
@@ -356,7 +430,7 @@ let refreshingWorkspace=false,pendingWorkspaceRender=false;
 async function refreshWorkspace(){
  if(refreshingWorkspace||document.hidden||!signedInUser)return;refreshingWorkspace=true;
  try{
-  const [stateResult]=await Promise.allSettled([api('/api/state'),refreshNotifications()]);
+  const [stateResult]=await Promise.allSettled([api('/api/state'),refreshNotifications(),refreshTeam()]);
   if(stateResult.status==='rejected')throw stateResult.reason;const state=stateResult.value;
   if(!['students','properties','leads','followups','payments'].every(key=>Array.isArray(state[key])))throw Error('Invalid CRM data');
   const changed=JSON.stringify(state)!==JSON.stringify(data);data=state;
@@ -611,7 +685,7 @@ async function startWorkspace(){
    headerDate.textContent=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date());
   }catch(_){headerDate.textContent='Wed, 14 Oct 2026'}
  }
- await load();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
+ await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
 }
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#globalSearch').focus()}});
 if(typeof staticPreview==='undefined'||!staticPreview){

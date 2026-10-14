@@ -30,7 +30,8 @@
       "styles.css",
       "app.js",
       "login.html",
-      "login.js"
+      "login.js",
+      "worker"
     ]
   }
 }

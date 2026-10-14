@@ -20,6 +20,8 @@ npm run db:migrate
 npm run deploy
 ```
 
+Live CRM: [adotrip-campus-crm.mkmkataria07.workers.dev](https://adotrip-campus-crm.mkmkataria07.workers.dev/). This existing Worker serves both the frontend and backend; opening a GitHub/static copy does not run the CRM API. Pushes update the repository; run `npm run deploy` to update the Worker unless Cloudflare Git integration is configured.
+
 Open the Worker URL returned by deployment. The frontend calls the same-origin `/api` endpoints; it no longer requests localhost. The D1 binding uses parameterized queries and batches related writes.
 
 ```sh
@@ -90,3 +92,7 @@ Demo rents are city-specific monthly INR estimates (roughly ₹1.5–₹3.3 lakh
 Historical demo assignments are grouped into distinct apartments with at most three students per apartment. The history seed updates the related lead and payment property IDs together, preserving financial amounts and statuses.
 
 Notifications use the shared `crm_activity` log for CRM record creation and updates, including the acting team member. Activity and the associated mutation are saved together. Pending follow-ups generate reminders from two calendar days before their scheduled date, using India time; completion removes the reminder. Read and dismissed notifications persist per user in `notification_receipts`. The client polls CRM state and notifications every five seconds while visible, and refreshes on window focus. Dashboard schedules update during form editing; full profile rendering waits until editing ends. Existing records are not assigned invented activity history. Apply migration `0008_notifications.sql` before deploying these changes.
+
+The sidebar Team directory lists all CRM accounts and their roles, with direct messaging between signed-in members. Conversations are visible only to their sender and recipient. Unread dots and hover previews show incoming unread messages for the current user; opening a conversation marks only its displayed incoming messages as read. Team/message refresh runs with the existing five-second polling. Apply migration `0009_direct_messages.sql` for message storage.
+
+Team lists exclude the signed-in user. Green/red presence dots reflect a session heartbeat from a visible workspace: online when any unexpired session was seen within 60 seconds. Heartbeats are throttled to one database write per 15 seconds and checked by five-second polling. Closing/backgrounding the app expires presence after about a minute; logging out removes that session immediately. Apply migration `0010_team_presence.sql`.
