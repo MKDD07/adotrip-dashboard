@@ -450,7 +450,7 @@ async function refreshNotifications(){
  catch(error){notificationError='Notifications unavailable. Retrying automatically.';renderNotifications();throw error}
 }
 async function updateNotifications(action,ids=[]){
- try{await api('/api/notifications/'+action,{method:'POST',body:JSON.stringify({ids})});await refreshNotifications()}
+ try{if(action==='read'&&ids.length>200){for(let offset=0;offset<ids.length;offset+=200)await api('/api/notifications/read',{method:'POST',body:JSON.stringify({ids:ids.slice(offset,offset+200)})});}else await api('/api/notifications/'+action,{method:'POST',body:JSON.stringify({ids})});await refreshNotifications()}
  catch(error){notify(error.message)}
 }
 let refreshingWorkspace=false,pendingWorkspaceRender=false;
@@ -471,6 +471,8 @@ async function refreshWorkspace(){
  }catch(error){showDataError(error)}finally{refreshingWorkspace=false}
 }
 
+const notificationActorColors=new Map();
+function notificationActorColor(actorId){if(!actorId)return 'notif-tone-reminder';if(!notificationActorColors.has(actorId))notificationActorColors.set(actorId,notificationActorColors.size%8);return 'notif-tone-'+notificationActorColors.get(actorId)}
 function renderNotifications(){
  const listEl=$('#notificationList');if(!listEl)return;
  const unreadCount=notifications.filter(n=>n.unread).length;
@@ -479,19 +481,19 @@ function renderNotifications(){
  const unreadText=$('#notificationUnreadCount');
  if(unreadText)unreadText.textContent=unreadCount;
 
- if($('#notifCountAll'))$('#notifCountAll').textContent=notifications.length;
- if($('#notifCountCalendar'))$('#notifCountCalendar').textContent=notifications.filter(n=>n.category==='calendar').length;
- if($('#notifCountNewPerson'))$('#notifCountNewPerson').textContent=notifications.filter(n=>n.category==='new-person').length;
- if($('#notifCountFollowups'))$('#notifCountFollowups').textContent=notifications.filter(n=>n.category==='followup').length;
- if($('#notifCountPayments'))$('#notifCountPayments').textContent=notifications.filter(n=>n.category==='payment').length;
- if($('#notifCountSystem'))$('#notifCountSystem').textContent=notifications.filter(n=>n.category==='system').length;
-
- const filtered=activeNotifFilter==='all'?notifications:notifications.filter(n=>n.category===activeNotifFilter);
+ const unread=notifications.filter(item=>item.unread),actors=new Map();
+ for(const item of notifications)if(item.actorId)actors.set(item.actorId,item.actorName||'Team member');
+ Array.from(actors.keys()).sort().forEach(notificationActorColor);
+ const tabs=[{id:'all',name:'All',count:unread.length},{id:'reminders',name:'Reminders',count:unread.filter(item=>!item.actorId).length},...Array.from(actors,([id,name])=>({id:'actor:'+id,name:id===signedInUser?.id?'You':name,count:unread.filter(item=>item.actorId===id).length})).sort((a,b)=>a.name.localeCompare(b.name))];
+ if(!tabs.some(tab=>tab.id===activeNotifFilter))activeNotifFilter='all';
+ const tabList=$('#notificationActorTabs');if(tabList)tabList.innerHTML=tabs.map(tab=>`<button type="button" class="notification-tab ${activeNotifFilter===tab.id?'active':''}" data-notif-filter="${esc(tab.id)}" role="tab" aria-selected="${activeNotifFilter===tab.id}">${esc(tab.name)} <span class="tab-count">${tab.count}</span></button>`).join('');
+ const markRead=$('#markAllReadBtn');if(markRead){const label=activeNotifFilter==='all'?'Mark all as read':'Mark this tab as read';markRead.setAttribute('title',label);markRead.setAttribute('aria-label',label);markRead.disabled=!unread.some(item=>activeNotifFilter==='all'||(activeNotifFilter==='reminders'?!item.actorId:activeNotifFilter==='actor:'+item.actorId));}
+ const filtered=unread.filter(item=>activeNotifFilter==='all'||(activeNotifFilter==='reminders'?!item.actorId:activeNotifFilter==='actor:'+item.actorId));
  if(filtered.length===0){
   listEl.innerHTML=`<div class="notification-empty"><div class="notification-empty-icon"><i data-lucide="bell-off"></i></div><strong>${notificationError||'All caught up!'}</strong></div>`;
  }else{
   listEl.innerHTML=filtered.map(item=>`
-   <article class="notification-item ${item.unread?'unread':''}" data-notif-id="${esc(item.id)}">
+   <article class="notification-item unread ${notificationActorColor(item.actorId)}" data-notif-id="${esc(item.id)}">
     <div class="notif-icon-box ${item.iconColor||'blue'}"><i data-lucide="${item.icon||'bell'}"></i></div>
     <div class="notif-content">
      <div class="notif-top-row">
@@ -524,18 +526,10 @@ function initNotificationHandlers(){
  const closeBtn=$('#closeNotificationBtn');
  if(closeBtn)closeBtn.onclick=e=>{e.stopPropagation();toggleNotificationPanel(false)};
 
- $$('[data-notif-filter]').forEach(tab=>{
-  tab.onclick=e=>{
-   e.stopPropagation();
-   $$('[data-notif-filter]').forEach(t=>t.classList.remove('active'));
-   tab.classList.add('active');
-   activeNotifFilter=tab.dataset.notifFilter;
-   renderNotifications();
-  };
- });
+ const actorTabs=$('#notificationActorTabs');if(actorTabs)actorTabs.onclick=event=>{const tab=event.target.closest?.('[data-notif-filter]');if(!tab)return;event.stopPropagation();activeNotifFilter=tab.dataset.notifFilter;renderNotifications()};
 
  const markAllBtn=$('#markAllReadBtn');
- if(markAllBtn)markAllBtn.onclick=e=>{e.stopPropagation();updateNotifications('read-all')};
+ if(markAllBtn)markAllBtn.onclick=e=>{e.stopPropagation();updateNotifications('read',notifications.filter(item=>item.unread&&(activeNotifFilter==='all'||(activeNotifFilter==='reminders'?!item.actorId:activeNotifFilter==='actor:'+item.actorId))).map(item=>item.id))};
  const clearReadBtn=$('#clearReadNotificationsBtn');
  if(clearReadBtn)clearReadBtn.onclick=e=>{e.stopPropagation();updateNotifications('clear-read')};
 

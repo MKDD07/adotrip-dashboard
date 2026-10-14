@@ -8399,3 +8399,15 @@ button, input, select, textarea { font-family: inherit; }
 .student-profile .profile-progress { margin-right: 44px; }
 
 #studentWorkspaceActions[hidden], #studentStatus[hidden] { display: none; }
+
+.notification-item.notif-tone-0 { background: #f0f6ff; }
+.notification-item.notif-tone-1 { background: #f2f8f1; }
+.notification-item.notif-tone-2 { background: #faf3fc; }
+.notification-item.notif-tone-3 { background: #fff6ed; }
+.notification-item.notif-tone-4 { background: #edf8f7; }
+.notification-item.notif-tone-5 { background: #fff0f4; }
+.notification-item.notif-tone-6 { background: #f5f4eb; }
+.notification-item.notif-tone-7 { background: #f1f2fa; }
+.notification-item.notif-tone-reminder { background: #fffbef; }
+.notification-tabs { overflow-x: auto; flex-wrap: nowrap; }
+.notification-tab { flex-shrink: 0; }

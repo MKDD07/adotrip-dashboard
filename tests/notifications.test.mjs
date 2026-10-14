@@ -32,10 +32,11 @@ test('real activity reaches other users and read/dismiss state persists separate
   }
   const call=(user,path,method='GET',body)=>worker.fetch(new Request('https://crm.example'+path,{method,headers:{Cookie:cookies[user],'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),env);
   assert.deepEqual((await (await call('bob','/api/notifications')).json()).notifications,[]);
+  const demo=await (await call('alice','/api/students','POST',{name:'Mock Person',mobile:'999-demo',profile:{is_demo:true}})).json();await call('alice','/api/followups','POST',{student_id:demo.id,starts_at:new Date().toISOString(),purpose:'Callback',priority:'High'});assert.deepEqual((await (await call('bob','/api/notifications')).json()).notifications,[]);
   const student=await (await call('alice','/api/students','POST',{name:'Aditi',mobile:'00000'})).json();
   assert.equal((await call('alice','/api/students','POST',{name:'Duplicate',mobile:'00000'})).status,409);
   let feed=(await (await call('bob','/api/notifications')).json()).notifications;
-  assert.equal(feed.length,1);assert.match(feed[0].message,/Alice · Aditi/);assert.equal(feed[0].studentId,student.id);assert.equal(feed[0].unread,true);
+  assert.equal(feed.length,1);assert.equal(feed[0].actorId,'alice');assert.equal(feed[0].actorName,'Alice');assert.match(feed[0].message,/Alice · Aditi/);assert.equal(feed[0].studentId,student.id);assert.equal(feed[0].unread,true);
   const eventId=feed[0].id;
   await call('bob','/api/notifications/read','POST',{ids:[eventId]});
   assert.equal((await (await call('bob','/api/notifications')).json()).notifications[0].unread,false);

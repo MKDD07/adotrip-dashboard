@@ -106,3 +106,5 @@ Password changes recheck the current session before submitting. First sign-in re
 Students can be permanently deleted using the trash button in their profile. Confirmation shows linked lead, follow-up and payment counts. The authenticated deletion API removes the student and linked records atomically, cleans up prior student notifications, deletes the uploaded R2 photo and records a deletion event without retaining the student name. Apartments and team login accounts remain available.
 
 The Pending and Finalized sidebar tabs share the student directory and profile design. Pending contains students whose status is not Converted; Finalized contains Converted students. Counts and lists update from the same D1 records. Profile links choose the correct tab automatically, and moving a student out of Converted returns them to Pending.
+
+Notifications show only unread real activity and reminders for non-demo students. Tabs group activity by its author (plus All and Reminders), with a distinct subtle card tint for each author. Reading clears cards immediately from the selected tab and persists per signed-in user; the mark-read action targets only the selected tab.
