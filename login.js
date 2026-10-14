@@ -1,3 +1,5 @@
+const hostedLoginPage=globalThis.location?.hostname==='mkdd07.github.io';
+if(hostedLoginPage)globalThis.location.replace('https://adotrip-campus-crm.mkmkataria07.workers.dev/login'+(globalThis.location.search||''));
 const find=id=>document.getElementById(id);
 async function authApi(path,body){
  let response;
@@ -17,4 +19,4 @@ find('generateLoginPassword').onclick=async()=>{try{const {password}=await authA
 find('copyLoginPassword').onclick=async()=>{try{await navigator.clipboard.writeText(find('generatedPassword').value);find('copyLoginPassword').textContent='Copied'}catch{find('generatedPassword').select()}};
 find('cancelFirstLogin').onclick=async()=>{try{await authApi('logout',{});location.replace('/login')}catch(error){showError(error)}};
 document.querySelectorAll('[data-toggle-password]').forEach(button=>button.onclick=()=>{const input=find(button.dataset.togglePassword);input.type=input.type==='password'?'text':'password';button.textContent=input.type==='password'?'Show':'Hide';button.setAttribute('aria-label',button.textContent+' password')});
-window.lucide?.createIcons();if(typeof staticLoginPreview==='undefined'||!staticLoginPreview)authApi('session').then(({user})=>{if(user?.must_change_password)showPasswordChange(user);else if(user)location.replace('/')}).catch(showError);
+window.lucide?.createIcons();if(!hostedLoginPage&&(typeof staticLoginPreview==='undefined'||!staticLoginPreview))authApi('session').then(({user})=>{if(user?.must_change_password)showPasswordChange(user);else if(user)location.replace('/')}).catch(showError);

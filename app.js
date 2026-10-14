@@ -1,3 +1,5 @@
+const hostedStaticPage=globalThis.location?.hostname==='mkdd07.github.io';
+if(hostedStaticPage)globalThis.location.replace('https://adotrip-campus-crm.mkmkataria07.workers.dev/'+(globalThis.location.search||'')+(globalThis.location.hash||''));
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];let data={students:[],properties:[],leads:[],followups:[],payments:[]},calendar,leadChart,statusChart,propertyType='',calendarFilter='all',propertiesLoading=true,propertiesError=false;
 
 const imageRequests = new Map();
@@ -31,6 +33,7 @@ function hydrateImages(){
  for(const image of images){image.dataset.imageState='waiting';if(typeof IntersectionObserver==='undefined')loadQueryImage(image);else{photoObserver ||= new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){photoObserver.unobserve(entry.target);loadQueryImage(entry.target)}},{rootMargin:'120px'});photoObserver.observe(image)}}
 }
 async function loadQueryImage(image){
+ if(hostedStaticPage){image.dataset.imageState='unavailable';return}
  const {target,query,kind='other'}=image.dataset,key=JSON.stringify([target,query,kind]);image.dataset.imageState='loading';
  try{
   if(!imageRequests.has(key))imageRequests.set(key,api('/api/images?'+new URLSearchParams({target,query,kind})).catch(error=>{imageRequests.delete(key);throw error}));
@@ -44,9 +47,15 @@ const api=async(url,options={})=>{let r;try{r=await fetch(API_ORIGIN+url,{cache:
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN'),esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])),find=(type,id)=>data[type].find(x=>x.id===id)||{};
 function statusBadge(value){const c=['Converted','Successful','Confirmed','Done'].includes(value)?'green':['Interested','Pending','Follow-up Required','On hold'].includes(value)?'amber':['Lost','Failed','Refunded'].includes(value)?'red':['Contacted','High'].includes(value)?'blue':'gray';return `<span class="status ${c}">${esc(value)}</span>`}
 function icons(){window.lucide?.createIcons();hydrateImages()};function notify(message){$('#toastText').textContent=message;icons();if(window.bootstrap)bootstrap.Toast.getOrCreateInstance($('#appToast'),{delay:2500}).show();else{$('#appToast').classList.add('show');setTimeout(()=>$('#appToast').classList.remove('show'),2500)}};function closeModal(id){bootstrap.Modal.getInstance($(id))?.hide()}
-async function load(){if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;$('#dataNotice').hidden=true;render();if(signedInUser)await refreshNotifications().catch(()=>{});}
-function showDataError(error){if(propertiesLoading){propertiesLoading=false;propertiesError=true;renderProperties()} $('#dataNoticeText').textContent=error.message;$('#dataNotice').hidden=false;}
-$('#retryData').onclick=()=>load().catch(showDataError);
+async function load(){if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;if($('#dataNotice'))$('#dataNotice').hidden=true;render();if(signedInUser)await refreshNotifications().catch(()=>{});}
+function showDataError(error){
+ if(propertiesLoading){propertiesLoading=false;propertiesError=true;renderProperties()}
+ const text=$('#dataNoticeText'),notice=$('#dataNotice');
+ if(text)text.textContent=error.message;
+ if(notice)notice.hidden=false;
+ else console.error('CRM data unavailable:',error.message);
+}
+if($('#retryData'))$('#retryData').onclick=()=>load().catch(showDataError);
 function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderCharts();icons()}
 let dashboardPeriod='month';
 function dashboardDateKey(value){
@@ -440,7 +449,7 @@ async function refreshWorkspace(){
    renderTodaySchedule();
    if(changed){renderWorkspaceHeroes();renderStats();renderProperties();renderCharts();const student=data.students.find(s=>s.id===selectedStudentId);if(student)updateStudentProgress(student)}
   }
-  $('#dataNotice').hidden=true;icons();
+  if($('#dataNotice'))$('#dataNotice').hidden=true;icons();
  }catch(error){showDataError(error)}finally{refreshingWorkspace=false}
 }
 
@@ -688,6 +697,6 @@ async function startWorkspace(){
  await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
 }
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#globalSearch').focus()}});
-if(typeof staticPreview==='undefined'||!staticPreview){
+if(!hostedStaticPage&&(typeof staticPreview==='undefined'||!staticPreview)){
  startWorkspace().then(()=>{if(signedInUser){setInterval(refreshWorkspace,5000);window.addEventListener?.('focus',refreshWorkspace);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshWorkspace()})}}).catch(showDataError);
 }
