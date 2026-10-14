@@ -15,3 +15,34 @@ test('GitHub Pages sign-in redirects to the deployed login with first-login stat
  vm.runInNewContext(script,{location:{protocol:'https:',hostname:'mkdd07.github.io',port:'',search:'?change=1',replace:url=>redirected=url}});
  assert.equal(redirected,'https://adotrip-campus-crm.mkmkataria07.workers.dev/login?change=1');
 });
+
+test('first sign-in changes the password without requiring a current password',async()=>{
+ const requests=[];const ctx=context(async(url,options)=>{requests.push({url,body:options.body&&JSON.parse(options.body)});return Response.json(url.endsWith('/session')?{user:{name:'Alice',must_change_password:true}}:{ok:true})});
+ let destination;ctx.location={replace:url=>destination=url};
+ ctx.document.getElementById('newPassword').value='New_password_2026!';ctx.document.getElementById('confirmPassword').value='New_password_2026!';
+ const button={disabled:false};await ctx.document.getElementById('changePasswordForm').onsubmit({preventDefault(){},target:{querySelector:()=>button}});
+ assert.deepEqual(requests[1].body,{new_password:'New_password_2026!'});assert.equal(destination,'/');assert.equal(button.disabled,false);
+});
+test('existing accounts request the current password and send it on retry',async()=>{
+ const requests=[];const ctx=context(async(url,options)=>{requests.push({url,body:options.body&&JSON.parse(options.body)});return Response.json(url.endsWith('/session')?{user:{name:'Alice',must_change_password:false}}:{ok:true})});
+ ctx.location={replace(){}};ctx.document.getElementById('newPassword').value='New_password_2026!';ctx.document.getElementById('confirmPassword').value='New_password_2026!';
+ const event={preventDefault(){},target:{querySelector:()=>({disabled:false})}};
+ await ctx.document.getElementById('changePasswordForm').onsubmit(event);
+ assert.equal(requests.length,1);assert.equal(ctx.document.getElementById('currentPasswordField').hidden,false);assert.equal(ctx.document.getElementById('currentPassword').required,true);
+ ctx.document.getElementById('currentPassword').value='Old_password_2026!';
+ await ctx.document.getElementById('changePasswordForm').onsubmit(event);
+ assert.deepEqual(requests[2].body,{new_password:'New_password_2026!',current_password:'Old_password_2026!'});
+});
+test('expired password-change sessions return to sign-in without posting a password',async()=>{
+ let requests=0;const ctx=context(async()=>{requests++;return Response.json({user:null})});
+ ctx.document.getElementById('newPassword').value='New_password_2026!';ctx.document.getElementById('confirmPassword').value='New_password_2026!';
+ await ctx.document.getElementById('changePasswordForm').onsubmit({preventDefault(){},target:{querySelector:()=>({disabled:false})}});
+ assert.equal(requests,1);assert.equal(ctx.document.getElementById('loginForm').hidden,false);assert.equal(ctx.document.getElementById('changePasswordForm').hidden,true);assert.match(ctx.document.getElementById('loginError').textContent,/session expired/);assert.equal(ctx.document.getElementById('newPassword').value,'');
+});
+
+test('password errors preserve structured server reasons and include status when no reason is returned',async()=>{
+ const structured=context(async()=>Response.json({errors:[{message:'Password service unavailable'}]},{status:503}));
+ await assert.rejects(vm.runInContext("authApi('password',{})",structured),/Password service unavailable/);
+ const empty=context(async()=>Response.json({},{status:400}));
+ await assert.rejects(vm.runInContext("authApi('password',{})",empty),/Password update failed \(HTTP 400\)/);
+});

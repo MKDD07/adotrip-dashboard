@@ -9,14 +9,58 @@ async function authApi(path,body){
  if(!type.includes('application/json')||/^\s*</.test(raw))throw Error('This page is not connected to the sign-in API. Open http://localhost:3000/login instead of Live Server.');
  let data;try{data=JSON.parse(raw)}catch{throw Error('The sign-in server returned an invalid response. Please retry.')}
  if(!data||typeof data!=='object'||Array.isArray(data))throw Error('The sign-in server returned an invalid response. Please retry.');
- if(!response.ok)throw Error(data.error||'Sign-in could not be completed. Please try again.');return data;
+ if(!response.ok){
+  const reason=typeof data.error==='string'?data.error:data.error?.message||data.message||(Array.isArray(data.errors)?data.errors.map(item=>item.message).filter(Boolean).join('; '):'');
+  const action=path==='password'?'Password update':'Sign-in';
+  const error=Error(reason||`${action} failed (HTTP ${response.status}). Please try again.`);error.status=response.status;throw error;
+ }
+ return data;
 }
 function showError(error){find('loginError').textContent=error.message;find('loginError').hidden=false}
-function showPasswordChange(user){if(user.image_url){find('firstLoginAvatar').src=user.image_url;find('firstLoginAvatar').hidden=false}find('loginForm').hidden=true;find('changePasswordForm').hidden=false;find('loginEyebrow').textContent='YOUR FIRST SIGN-IN';find('loginHeroTitle').textContent=`Welcome, ${user.name.split(' ')[0]}.`;find('loginHeroCopy').textContent='Set your own password to open your team workspace.';find('loginFormEyebrow').textContent='ONE LAST STEP';find('loginFormTitle').textContent='Make it yours';find('loginFormCopy').textContent='Replace your starter password before accessing student records.';find('newPassword').focus()}
+let passwordChangeUser=null;
+function showPasswordChange(user){
+ passwordChangeUser=user;const first=Boolean(user.must_change_password);
+ if(user.image_url){find('firstLoginAvatar').src=user.image_url;find('firstLoginAvatar').hidden=false}
+ find('loginForm').hidden=true;find('changePasswordForm').hidden=false;
+ find('currentPasswordField').hidden=first;find('currentPassword').required=!first;
+ find('loginEyebrow').textContent=first?'YOUR FIRST SIGN-IN':'ACCOUNT SECURITY';
+ find('loginHeroTitle').textContent=first?`Welcome, ${user.name.split(' ')[0]}.`:'Update your password';
+ find('loginHeroCopy').textContent=first?'Set your own password to open your team workspace.':'Choose a new password for your account.';
+ find('loginFormEyebrow').textContent=first?'ONE LAST STEP':'YOUR ACCOUNT';
+ find('loginFormTitle').textContent=first?'Make it yours':'Change password';
+ find('loginFormCopy').textContent=first?'Replace your starter password before accessing student records.':'Enter your current password and choose a new one.';
+ (first?find('newPassword'):find('currentPassword')).focus();
+}
+function returnToSignIn(message){
+ passwordChangeUser=null;
+ find('changePasswordForm').hidden=true;find('loginForm').hidden=false;
+ for(const id of ['currentPassword','newPassword','confirmPassword','generatedPassword'])find(id).value='';
+ find('generatedPasswordBox').hidden=true;
+ find('loginFormTitle').textContent='Sign in';find('loginFormCopy').textContent='Sign in again to update your password.';
+ showError(Error(message));find('loginEmail').focus();
+}
 find('loginForm').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type=submit]');button.disabled=true;find('loginError').hidden=true;try{const {user}=await authApi('login',Object.fromEntries(new FormData(event.target)));find('loginPassword').value='';if(user.must_change_password)showPasswordChange(user);else location.replace('/')}catch(error){showError(error)}finally{button.disabled=false}};
-find('changePasswordForm').onsubmit=async event=>{event.preventDefault();find('loginError').hidden=true;if(find('newPassword').value!==find('confirmPassword').value){showError(Error('The passwords do not match'));return}const button=event.target.querySelector('[type=submit]');button.disabled=true;try{await authApi('password',{new_password:find('newPassword').value});location.replace('/')}catch(error){showError(error)}finally{button.disabled=false}};
+find('changePasswordForm').onsubmit=async event=>{
+ event.preventDefault();find('loginError').hidden=true;
+ const password=find('newPassword').value;
+ if(password.length<12||password.length>128){showError(Error('Use a password between 12 and 128 characters'));return}
+ if(password!==find('confirmPassword').value){showError(Error('The passwords do not match'));return}
+ const button=event.target.querySelector('[type=submit]');button.disabled=true;
+ try{
+  const {user}=await authApi('session');
+  if(!user){returnToSignIn('Your session expired. Sign in again before changing your password.');return}
+  if(!user.must_change_password&&!find('currentPassword').value){showPasswordChange(user);showError(Error('Enter your current password to continue.'));return}
+  const payload={new_password:password};if(!user.must_change_password)payload.current_password=find('currentPassword').value;
+  await authApi('password',payload);
+  for(const id of ['currentPassword','newPassword','confirmPassword','generatedPassword'])find(id).value='';
+  location.replace('/');
+ }catch(error){
+  if(error.status===401)returnToSignIn('Your session expired. Sign in again before changing your password.');
+  else showError(error);
+ }finally{button.disabled=false}
+};
 find('generateLoginPassword').onclick=async()=>{try{const {password}=await authApi('generate-password',{});find('newPassword').value=password;find('confirmPassword').value=password;find('generatedPassword').value=password;find('generatedPasswordBox').hidden=false}catch(error){showError(error)}};
 find('copyLoginPassword').onclick=async()=>{try{await navigator.clipboard.writeText(find('generatedPassword').value);find('copyLoginPassword').textContent='Copied'}catch{find('generatedPassword').select()}};
 find('cancelFirstLogin').onclick=async()=>{try{await authApi('logout',{});location.replace('/login')}catch(error){showError(error)}};
 document.querySelectorAll('[data-toggle-password]').forEach(button=>button.onclick=()=>{const input=find(button.dataset.togglePassword);input.type=input.type==='password'?'text':'password';button.textContent=input.type==='password'?'Show':'Hide';button.setAttribute('aria-label',button.textContent+' password')});
-window.lucide?.createIcons();if(!hostedLoginPage&&(typeof staticLoginPreview==='undefined'||!staticLoginPreview))authApi('session').then(({user})=>{if(user?.must_change_password)showPasswordChange(user);else if(user)location.replace('/')}).catch(showError);
+window.lucide?.createIcons();if(!hostedLoginPage&&(typeof staticLoginPreview==='undefined'||!staticLoginPreview))authApi('session').then(({user})=>{if(user?.must_change_password||user&&new URLSearchParams(globalThis.location?.search||'').get('change')==='1')showPasswordChange(user);else if(user)location.replace('/')}).catch(showError);

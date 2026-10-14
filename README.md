@@ -100,3 +100,5 @@ Team lists exclude the signed-in user. Green/red presence dots reflect a session
 The GitHub Pages URL `https://mkdd07.github.io/adotrip-dashboard/` redirects to the Cloudflare Worker, preserving the selected view. Its login page redirects to the Worker login as well. The CRM does not make cross-origin API calls from GitHub Pages, so authentication cookies and backend routes stay on the same origin.
 
 The app and login JavaScript also detect the GitHub Pages host and redirect before starting API requests, protecting older cached HTML. Source entrypoints include versioned CSS/JS URLs as well as built assets. Data-error reporting tolerates missing banner nodes so older documents cannot turn an API failure into an unhandled JavaScript exception.
+
+Password changes recheck the current session before submitting. First sign-in requires only a new password; existing accounts use `/login?change=1` and must provide their current password. Expired sessions return to sign-in. Authentication errors preserve structured server messages and include HTTP status when no reason is returned.

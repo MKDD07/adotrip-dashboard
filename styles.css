@@ -8387,3 +8387,4 @@ button, input, select, textarea { font-family: inherit; }
 .team-presence-offline { background: #ce4c4c; }
 #settingsView .settings-main-column { width: 100%; }
 .team-retry-btn { justify-self: start; margin: 0 8px 8px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font-size: var(--text-caption); }
+.auth-form [hidden] { display: none !important; }
