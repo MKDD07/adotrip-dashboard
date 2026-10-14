@@ -9,3 +9,9 @@ test('login handles empty, HTML, malformed and valid JSON responses',async()=>{
  const ctx=context(async()=>Response.json({user:null}));assert.equal((await vm.runInContext("authApi('session')",ctx)).user,null);
  const unauthorized=context(async()=>Response.json({error:'Email or password is incorrect'},{status:401}));await assert.rejects(vm.runInContext("authApi('login',{})",unauthorized),/Email or password is incorrect/);
 });
+
+test('GitHub Pages sign-in redirects to the deployed login with first-login state',()=>{
+ const script=readFileSync('login.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1];let redirected;
+ vm.runInNewContext(script,{location:{protocol:'https:',hostname:'mkdd07.github.io',port:'',search:'?change=1',replace:url=>redirected=url}});
+ assert.equal(redirected,'https://adotrip-campus-crm.mkmkataria07.workers.dev/login?change=1');
+});

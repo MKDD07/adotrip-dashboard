@@ -6,10 +6,13 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Adotrip Student Stays CRM</title>
     <script>
-        // Live Server only serves files; CRM data is served by the Worker preview.
-        const staticPreview = location.protocol === 'file:' ||
+        // GitHub Pages is an entry link; the Worker hosts the CRM and its API.
+        const githubPages = location.hostname === 'mkdd07.github.io';
+        const staticPreview = githubPages || location.protocol === 'file:' ||
             (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) && !['3000', '8787'].includes(location.port));
-        if (staticPreview) {
+        if (githubPages) {
+            location.replace('https://adotrip-campus-crm.mkmkataria07.workers.dev/' + (location.search || '') + (location.hash || ''));
+        } else if (staticPreview) {
             const previewHost = location.protocol === 'file:' ? 'localhost' : location.hostname;
             location.replace('http://' + previewHost + ':3000/' + location.hash);
         }

@@ -1,7 +1,10 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Campus CRM</title><script>
-const staticLoginPreview = location.protocol === 'file:' ||
+const githubPagesLogin = location.hostname === 'mkdd07.github.io';
+const staticLoginPreview = githubPagesLogin || location.protocol === 'file:' ||
  (['localhost','127.0.0.1','[::1]'].includes(location.hostname) && !['3000','8787'].includes(location.port));
-if (staticLoginPreview) {
+if (githubPagesLogin) {
+ location.replace('https://adotrip-campus-crm.mkmkataria07.workers.dev/login' + (location.search || ''));
+} else if (staticLoginPreview) {
  const previewHost = location.protocol === 'file:' ? 'localhost' : location.hostname;
  location.replace('http://' + previewHost + ':3000/login' + location.search);
 }
