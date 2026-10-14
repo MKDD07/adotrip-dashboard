@@ -499,12 +499,12 @@ function renderNotifications(){
      <div class="notif-top-row">
       <span class="notif-title">${esc(item.title)}</span>
       ${item.actionView||item.studentId?`<button type="button" class="notif-action-link" data-notif-action="${esc(item.id)}" aria-label="Open notification: ${esc(item.title)}" title="Open"><i data-lucide="arrow-up-right"></i></button>`:''}
+      <button type="button" class="notif-dismiss-btn" data-notif-dismiss="${esc(item.id)}" title="Dismiss notification" aria-label="Dismiss notification"><i data-lucide="x"></i></button>
       ${item.priority==='urgent'?`<span class="notif-tag badge-urgent">Urgent</span>`:''}
      </div>
-     <p class="notif-message">${esc(item.message)}</p>
+     <p class="notif-message">${esc(item.actorName&&item.message?.startsWith(item.actorName+' · ')?item.message.slice(item.actorName.length+3):item.message)}</p>
      <div class="notif-meta-row">
-      <span>${esc(item.time)}</span>
-      <button type="button" class="notif-dismiss-btn" data-notif-dismiss="${esc(item.id)}" title="Dismiss notification" aria-label="Dismiss notification"><i data-lucide="x"></i></button>
+      ${item.actorName?`<span class="notif-author">${esc(item.actorId===signedInUser?.id?'You':item.actorName)}</span><span class="notif-meta-dot" aria-hidden="true">·</span>`:''}<span>${esc(item.time)}</span>
      </div>
     </div>
    </article>
