@@ -16,6 +16,19 @@ async function authApi(path,body){
  }
  return data;
 }
+async function passwordCredential(email,password){
+ const info=await authApi('login-info',{email});
+ if(info.algorithm!=='PBKDF2')throw Error('Refresh the sign-in page to use updated authentication');
+ if(info.hash!=='SHA-512'||info.iterations!==210000||info.length!==512||!/^[a-f0-9]{48}$/.test(info.salt||''))throw Error('Unsupported account password format');
+ return {password_key:await derivePasswordKey(password,info.salt)};
+}
+async function derivePasswordKey(password,saltHex){
+ const salt=Uint8Array.from(saltHex.match(/../g),byte=>parseInt(byte,16));
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
+ const bytes=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-512',iterations:210000,salt},key,512));
+ return Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+
 function showError(error){find('loginError').textContent=error.message;find('loginError').hidden=false}
 let passwordChangeUser=null;
 function showPasswordChange(user){
@@ -39,7 +52,7 @@ function returnToSignIn(message){
  find('loginFormTitle').textContent='Sign in';find('loginFormCopy').textContent='Sign in again to update your password.';
  showError(Error(message));find('loginEmail').focus();
 }
-find('loginForm').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type=submit]');button.disabled=true;find('loginError').hidden=true;try{const {user}=await authApi('login',Object.fromEntries(new FormData(event.target)));find('loginPassword').value='';if(user.must_change_password)showPasswordChange(user);else location.replace('/')}catch(error){showError(error)}finally{button.disabled=false}};
+find('loginForm').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type=submit]');button.disabled=true;find('loginError').hidden=true;try{const fields=Object.fromEntries(new FormData(event.target)),credential=await passwordCredential(fields.email,fields.password);const {user}=await authApi('login',{email:fields.email,...credential});find('loginPassword').value='';if(user.must_change_password)showPasswordChange(user);else location.replace('/')}catch(error){showError(error)}finally{button.disabled=false}};
 find('changePasswordForm').onsubmit=async event=>{
  event.preventDefault();find('loginError').hidden=true;
  const password=find('newPassword').value;
@@ -50,7 +63,7 @@ find('changePasswordForm').onsubmit=async event=>{
   const {user}=await authApi('session');
   if(!user){returnToSignIn('Your session expired. Sign in again before changing your password.');return}
   if(!user.must_change_password&&!find('currentPassword').value){showPasswordChange(user);showError(Error('Enter your current password to continue.'));return}
-  const payload={new_password:password};if(!user.must_change_password)payload.current_password=find('currentPassword').value;
+  const salt=Array.from(crypto.getRandomValues(new Uint8Array(24)),byte=>byte.toString(16).padStart(2,'0')).join('');const payload={new_password:password,new_password_salt:salt,new_password_key:await derivePasswordKey(password,salt)};if(!user.must_change_password){const current=find('currentPassword').value;if(current===password){showError(Error('Choose a different password from your current password'));return}const credential=await passwordCredential(user.email,current);payload.current_password=current;if(credential.password_key)payload.current_password_key=credential.password_key;}
   await authApi('password',payload);
   for(const id of ['currentPassword','newPassword','confirmPassword','generatedPassword'])find(id).value='';
   location.replace('/');
