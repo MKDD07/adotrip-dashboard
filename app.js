@@ -298,8 +298,8 @@ function updateStudentProgress(student){
  if(progressStudentId!==student.id){progressStudentId=student.id;fill.style.width='0%';const apply=()=>{if(progressStudentId===student.id)fill.style.width=value+'%'};if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));else setTimeout(apply,0)}else fill.style.width=value+'%';
 }
 function renderStudentProfile(){
- if(!selectedStudentId)return;
- const student=find('students',selectedStudentId);if(!student.id)return;
+ const student=find('students',selectedStudentId);$('#deleteStudentBtn').hidden=!student.id;
+ if(!student.id){$('#profileTitle').textContent='Select a student';$('#profileSubtitle').textContent='';$('#profilePortrait').innerHTML='';$('#profileProgress').hidden=true;$('#profileJourney').innerHTML='';$('#profileBody').innerHTML='<div class="empty-state">Select a student from the list.</div>';return}
  const profile=profileInfo(student),leads=data.leads.filter(l=>l.student_id===student.id),tasks=data.followups.filter(f=>f.student_id===student.id).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)),payments=data.payments.filter(p=>p.student_id===student.id),pending=tasks.filter(f=>f.status!=='Done'),done=tasks.filter(f=>f.status==='Done'),paid=payments.filter(p=>p.status==='Successful').reduce((sum,p)=>sum+Number(p.amount),0);
  updateStudentProgress(student);$('#profileTitle').textContent=student.name;$('#profileSubtitle').textContent=`${student.id} · ${student.agent||'Unassigned'}`;$('#profilePortrait').innerHTML=personImage(student,'profile-portrait');
  const info=(entries)=>`<dl class="profile-details">${entries.filter(([,value])=>value).map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`;
@@ -330,6 +330,19 @@ function renderStudentProfile(){
  ${tabs.map(([key])=>`<div id="student-panel-${key}" class="student-profile-panel" role="tabpanel" aria-labelledby="student-tab-${key}" ${activeProfileTab===key?'':'hidden'}>${panelContents[key]}</div>`).join('')}`;
  icons();
 }
+async function deleteSelectedStudent(){
+ const student=find('students',selectedStudentId);if(!student.id)return;
+ const linked=table=>data[table].filter(row=>row.student_id===student.id).length;
+ if(!window.confirm(`Permanently delete ${student.name}?\n\nThis removes their profile, ${linked('leads')} leads, ${linked('followups')} follow-ups, ${linked('payments')} payments and uploaded photo. This cannot be undone.`))return;
+ const button=$('#deleteStudentBtn');button.disabled=true;$('#profileError').hidden=true;
+ try{
+  const result=await api(`/api/students/${encodeURIComponent(student.id)}`,{method:'DELETE'});
+  for(const table of ['students','leads','followups','payments'])data[table]=data[table].filter(row=>table==='students'?row.id!==student.id:row.student_id!==student.id);
+  selectedStudentId=null;activeProfileTab='overview';render();notify(result.warning||'Student deleted');
+  await refreshNotifications().catch(()=>{});
+ }catch(error){$('#profileError').textContent=error.message;$('#profileError').hidden=false}finally{button.disabled=false}
+}
+$('#deleteStudentBtn').onclick=deleteSelectedStudent;
 document.addEventListener('click',event=>{const shortlistButton=event.target.closest('[data-property-shortlist]');if(shortlistButton&&!shortlistButton.disabled)shortlist(shortlistButton.dataset.propertyShortlist);const metric=event.target.closest('[data-metric-view]');if(metric)showView(metric.dataset.metricView);const trigger=event.target.closest('[data-student-profile]');if(trigger)openStudentProfile(trigger.dataset.studentProfile)});
 function selectProfileTab(key,focus=false){
  if(!['overview','followups','properties','payments','details'].includes(key))return;activeProfileTab=key;

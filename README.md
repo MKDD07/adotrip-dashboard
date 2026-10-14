@@ -102,3 +102,5 @@ The GitHub Pages URL `https://mkdd07.github.io/adotrip-dashboard/` redirects to 
 The app and login JavaScript also detect the GitHub Pages host and redirect before starting API requests, protecting older cached HTML. Source entrypoints include versioned CSS/JS URLs as well as built assets. Data-error reporting tolerates missing banner nodes so older documents cannot turn an API failure into an unhandled JavaScript exception.
 
 Password changes recheck the current session before submitting. First sign-in requires only a new password; existing accounts use `/login?change=1` and must provide their current password. Expired sessions return to sign-in. Authentication errors preserve structured server messages and include HTTP status when no reason is returned.
+
+Students can be permanently deleted using the trash button in their profile. Confirmation shows linked lead, follow-up and payment counts. The authenticated deletion API removes the student and linked records atomically, cleans up prior student notifications, deletes the uploaded R2 photo and records a deletion event without retaining the student name. Apartments and team login accounts remain available.

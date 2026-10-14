@@ -8388,3 +8388,12 @@ button, input, select, textarea { font-family: inherit; }
 #settingsView .settings-main-column { width: 100%; }
 .team-retry-btn { justify-self: start; margin: 0 8px 8px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font-size: var(--text-caption); }
 .auth-form [hidden] { display: none !important; }
+
+.profile-delete-btn { color: #b64242; flex-shrink: 0; align-self: flex-start; background: transparent; border: 1px solid var(--line); }
+.profile-delete-btn:hover { background: #fff1f1; border-color: #e9bcbc; }
+.profile-delete-btn[hidden] { display: none; }
+
+.student-profile .profile-header { position: relative; }
+.profile-delete-btn { position: absolute; top: 20px; right: 20px; }
+.student-profile .profile-heading { padding-right: 44px; }
+.student-profile .profile-progress { margin-right: 44px; }

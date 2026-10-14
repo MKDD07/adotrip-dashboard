@@ -51,10 +51,23 @@ async function handleApi(request, env, path, user) {
     if (path === '/api/state') return json(await state(db));
     if (path === '/api/export') return json({ exported_at: new Date().toISOString(), ...await state(db) });
   }
-  if (!['POST', 'PATCH'].includes(request.method)) throw new HttpError(404, 'Route not found');
+  if (!['POST', 'PATCH', 'DELETE'].includes(request.method)) throw new HttpError(404, 'Route not found');
   // Mutations must originate from the app, not another website.
   const origin = request.headers.get('Origin');
-  if (origin && origin !== new URL(request.url).origin) throw new HttpError(403, 'Cross-origin changes are not allowed');
+  if (origin && origin !== new URL(request.url).origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') throw new HttpError(403, 'Cross-origin changes are not allowed');
+  if (request.method === 'DELETE') {
+    const match=path.match(/^\/api\/students\/([^/]+)$/);if(!match)throw new HttpError(404,'Route not found');
+    const recordId=decodeURIComponent(match[1]);await exists(db,'students',recordId);
+    await db.batch([
+      stmt(db,'DELETE FROM notification_receipts WHERE notification_id IN (SELECT id FROM crm_activity WHERE student_id=?) OR EXISTS (SELECT 1 FROM followups f WHERE f.student_id=? AND notification_id LIKE \'reminder:\'||f.id||\':%\')',[recordId,recordId]),
+      stmt(db,'DELETE FROM crm_activity WHERE student_id=?',[recordId]),
+      ...['leads','followups','payments'].map(table=>stmt(db,`DELETE FROM ${table} WHERE student_id=?`,[recordId])),
+      stmt(db,'DELETE FROM students WHERE id=?',[recordId]),
+      activityStatement(db,user,'students','deleted',{id:recordId,name:'Student record'})
+    ]);
+    let warning;try{await env.MEDIA?.delete(`students/${recordId}`)}catch(error){console.error('Deleted student photo cleanup failed',error);warning='Student deleted, but its uploaded photo could not be removed. Contact the administrator to finish photo cleanup.'}
+    return json({ok:true,...(warning?{warning}:{})});
+  }
   let x; try { x = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON'); }
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw new HttpError(400, 'Expected a JSON object');
   if (request.method === 'POST') {

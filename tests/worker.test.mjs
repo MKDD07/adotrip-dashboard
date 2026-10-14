@@ -60,10 +60,20 @@ test('D1 routes persist profiles, status, follow-up outcomes and payments',async
   assert.equal((await call({...env,MEDIA:null},'/api/students','POST',{name:'Missing R2',mobile:'0000001002',image_data:'data:image/jpeg;base64,/9j/2Q=='})).status,503);
   assert.equal((await call(env,'/api/media/students/missing')).status,404);
 
+  const survivor=await (await call(env,'/api/students','POST',{name:'Keep Person',mobile:'0000001003'})).json();
+  const deletionPath=`/api/students/${student.id}`;
+  assert.equal((await worker.fetch(new Request('https://crm.test'+deletionPath,{method:'DELETE'}),env)).status,401);
+  const crossOrigin=await worker.fetch(new Request('https://crm.test'+deletionPath,{method:'DELETE',headers:{Cookie:'crm_session='+'a'.repeat(64),Origin:'https://other.example'}}),env);assert.equal(crossOrigin.status,403);
+  const failedEnv={...env,DB:{prepare:query=>env.DB.prepare(query),batch:async()=>{throw Error('Deletion transaction failed')}}};assert.equal((await call(failedEnv,deletionPath,'DELETE')).status,503);assert.ok((await (await call(env,'/api/state')).json()).students.some(s=>s.id===student.id));
+  const history=await env.DB.prepare('SELECT id FROM crm_activity WHERE student_id=?').bind(student.id).first();await env.DB.prepare('INSERT INTO notification_receipts(user_id,notification_id,is_read,dismissed) VALUES(?,?,1,0)').bind('fixture',history.id).run();
+  assert.equal((await call(env,deletionPath,'DELETE')).status,200);const afterDelete=await (await call(env,'/api/state')).json();assert.ok(!afterDelete.students.some(s=>s.id===student.id));for(const table of ['leads','followups','payments'])assert.ok(!afterDelete[table].some(r=>r.student_id===student.id));assert.ok(afterDelete.properties.some(p=>p.id===property.id));assert.ok(afterDelete.students.some(s=>s.id===withPhoto.id));assert.equal(await env.DB.prepare('SELECT * FROM notification_receipts WHERE notification_id=?').bind(history.id).first(),null);const deletionLog=await env.DB.prepare('SELECT * FROM crm_activity WHERE student_id=?').bind(student.id).first();assert.equal(deletionLog.action,'deleted');assert.equal(deletionLog.label.includes("O'Connor"),false);
+  const feed=await (await call(env,'/api/notifications')).json();assert.ok(feed.notifications.some(n=>n.title==='Student deleted'&&n.studentId===null));assert.equal((await call(env,deletionPath,'DELETE')).status,404);
+  assert.equal((await call(env,`/api/students/${withPhoto.id}`,'DELETE')).status,200);assert.equal(objects.has(`students/${withPhoto.id}`),false);
+
   for(let i=0;i<2;i++)execFileSync('python3',['-c',python],{input:JSON.stringify({file,schema:readFileSync('data/demo.sql','utf8')})});
   const seeded=await (await call(env,'/api/state')).json(),demo=seeded.students.filter(s=>s.id.startsWith('DEMO-STU-'));
   assert.equal(demo.length,10);assert.equal(seeded.followups.filter(f=>f.id.startsWith('DEMO-FU-')).length,20);
   for(const s of demo){const p=JSON.parse(s.profile_json);assert.equal(p.nationality,'Indian');assert.ok(p.college&&p.guardian_name&&p.move_in_date&&p.image_query);assert.ok(seeded.leads.some(l=>l.student_id===s.id));assert.ok(seeded.payments.some(t=>t.student_id===s.id))}
-  assert.ok(seeded.students.some(s=>s.id===student.id));
+  assert.ok(seeded.students.some(s=>s.id===survivor.id));assert.ok(!seeded.students.some(s=>s.id===student.id));
  }finally{rmSync(dir,{recursive:true,force:true})}
 });
