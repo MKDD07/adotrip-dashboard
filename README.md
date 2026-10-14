@@ -104,3 +104,5 @@ The app and login JavaScript also detect the GitHub Pages host and redirect befo
 Password changes recheck the current session before submitting. First sign-in requires only a new password; existing accounts use `/login?change=1` and must provide their current password. Expired sessions return to sign-in. Authentication errors preserve structured server messages and include HTTP status when no reason is returned.
 
 Students can be permanently deleted using the trash button in their profile. Confirmation shows linked lead, follow-up and payment counts. The authenticated deletion API removes the student and linked records atomically, cleans up prior student notifications, deletes the uploaded R2 photo and records a deletion event without retaining the student name. Apartments and team login accounts remain available.
+
+The Pending and Finalized sidebar tabs share the student directory and profile design. Pending contains students whose status is not Converted; Finalized contains Converted students. Counts and lists update from the same D1 records. Profile links choose the correct tab automatically, and moving a student out of Converted returns them to Pending.

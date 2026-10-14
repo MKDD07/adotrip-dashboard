@@ -58,6 +58,8 @@ function showDataError(error){
 if($('#retryData'))$('#retryData').onclick=()=>load().catch(showDataError);
 function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderCharts();icons()}
 let dashboardPeriod='month';
+let studentDirectoryMode='pending';
+const studentGroup=()=>data.students.filter(student=>(student.status==='Converted')===(studentDirectoryMode==='finalized'));
 function dashboardDateKey(value){
  if(!value)return '';
  const text=String(value);
@@ -90,7 +92,7 @@ function renderWorkspaceHeroes(){
  const active=data.leads.filter(l=>!['Converted','Lost'].includes(l.status)).length,pending=data.followups.filter(f=>f.status!=='Done').length,assigned=data.students.filter(s=>s.agent).length;
  const dashboard=dashboardData(),dashboardActive=dashboard.leads.filter(l=>!['Converted','Lost'].includes(l.status)).length,dashboardPending=dashboard.followups.filter(f=>f.status!=='Done').length;
  $('#dashboardHeroFacts').innerHTML=`<span><i data-lucide="users-round"></i>${dashboard.students.length} students</span><span><i data-lucide="list-filter"></i>${dashboardActive} active opportunities</span><span><i data-lucide="calendar-clock"></i>${dashboardPending} pending follow-ups</span>`;
- $('#studentHeroFacts').innerHTML=`<span><i data-lucide="users-round"></i>${data.students.length} students</span><span><i data-lucide="user-check"></i>${assigned} assigned</span><span><i data-lucide="calendar-clock"></i>${pending} follow-ups</span>`;
+ const group=studentGroup(),groupIds=new Set(group.map(student=>student.id));$('#studentHeroFacts').innerHTML=`<span><i data-lucide="users-round"></i>${group.length} students</span><span><i data-lucide="user-check"></i>${group.filter(student=>student.agent).length} assigned</span><span><i data-lucide="calendar-clock"></i>${data.followups.filter(task=>task.status!=='Done'&&groupIds.has(task.student_id)).length} follow-ups</span>`;
 
  const facts=(id,items)=>{$(id).innerHTML=items.map(([icon,text])=>`<span><i data-lucide="${icon}"></i>${esc(text)}</span>`).join('')};
  const won=data.leads.filter(l=>l.status==='Converted').length,today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),due=data.followups.filter(f=>f.status!=='Done'&&f.starts_at.slice(0,10)===today).length,owners=new Set(data.students.map(s=>s.agent).filter(Boolean)).size;
@@ -107,19 +109,21 @@ function renderStats(){
  const metrics=[
   {label:'Total students',value:dashboard.students.length,icon:'users-round',view:'students',caption:'Students finding their next stay',detail:`${assigned} assigned to your team`,percent:dashboard.students.length?assigned/dashboard.students.length*100:0,foot:'Assignment coverage'},
   {label:'Active leads',value:active,icon:'list-filter',view:'leads',caption:'Conversations in progress',detail:`${active} of ${total} opportunities`,percent:total?active/total*100:0,foot:'Open pipeline'},
-  {label:'Conversions',value:converted,icon:'badge-check',view:'leads',caption:'Confirmed apartment bookings',detail:`${rate}% booking rate`,percent:rate,foot:'Enquiry to booking'},
+  {label:'Conversions',value:converted,icon:'badge-check',view:'finalized',caption:'Confirmed apartment bookings',detail:`${rate}% booking rate`,percent:rate,foot:'Enquiry to booking'},
   {label:'Revenue booked',value:money(paid),icon:'indian-rupee',view:'payments',caption:'Successful payments',detail:`${money(pending)} pending`,percent:paid+pending?paid/(paid+pending)*100:0,foot:'Collection progress',featured:true}
  ];
  $('#statCards').innerHTML=metrics.map(metric=>`<button type="button" class="dashboard-metric ${metric.featured?'dashboard-metric-featured':''}" data-metric-view="${metric.view}" aria-label="${metric.label}: ${metric.value}. Open ${metric.view}"><div class="dashboard-metric-head"><span>${metric.label}</span><i data-lucide="${metric.icon}"></i></div><strong class="dashboard-metric-value">${metric.value}</strong><p class="dashboard-metric-caption">${metric.caption}</p><div class="dashboard-metric-footer"><div><span>${metric.foot}</span><strong>${metric.detail}</strong></div><i data-lucide="arrow-up-right"></i></div><div class="dashboard-metric-track" role="presentation"><span style="width:${Math.max(0,Math.min(100,metric.percent))}%"></span></div></button>`).join('');
- $('#studentNavCount').textContent=data.students.length;$('#recentStudents').innerHTML=dashboard.students.slice(0,4).map(student=>{
+ $('#studentNavCount').textContent=data.students.filter(student=>student.status!=='Converted').length;$('#finalizedNavCount').textContent=data.students.filter(student=>student.status==='Converted').length;$('#recentStudents').innerHTML=dashboard.students.slice(0,4).map(student=>{
  const lead=dashboard.leads.find(l=>l.student_id===student.id&&l.status!=='Lost'),property=find('properties',lead?.property_id);
  return `<tr><td><button type="button" class="recent-student-link" data-student-profile="${esc(student.id)}">${personImage(student)}<span><strong>${esc(student.name)}</strong><small>${esc(student.course||'Student enquiry')}</small></span></button></td><td><span class="recent-apartment">${esc(property.name||'Not selected')}</span><small class="recent-apartment-location">${esc(property.location||'')}</small></td><td>${statusBadge(student.status)}</td><td class="recent-followup">${lead?.followup?esc(pipelineDate(lead.followup)):'—'}</td></tr>`;
  }).join('')||'<tr><td colspan="4" class="empty-state">No enquiries in this period.</td></tr>'}
 
 function renderStudents(){
  const query=($('#studentSearch')?.value||'').toLowerCase(),status=$('#studentStatus')?.value||'';
- const students=data.students.filter(s=>(!query||Object.values(s).join(' ').toLowerCase().includes(query))&&(!status||s.status===status));
- if(!selectedStudentId||!data.students.some(s=>s.id===selectedStudentId))selectedStudentId=students.find(s=>profileInfo(s).is_demo)?.id||students[0]?.id||null;
+ const finalized=studentDirectoryMode==='finalized';$('#studentStatus').hidden=finalized;$('#studentWorkspaceActions').hidden=finalized;
+ $('#studentWorkspaceEyebrow').textContent=finalized?'FINALIZED BOOKINGS':'PENDING STUDENTS';$('#studentWorkspaceTitle').textContent=finalized?'Finalized students':'Pending students';$('#studentWorkspaceCopy').textContent=finalized?'Converted students and their confirmed stays.':'Student enquiries awaiting a finalized booking.';$('#studentDirectoryTitle').textContent=finalized?'Finalized students':'Pending students';
+ const students=studentGroup().filter(s=>(!query||Object.values(s).join(' ').toLowerCase().includes(query))&&(finalized||!status||s.status===status));
+ if(!selectedStudentId||!students.some(s=>s.id===selectedStudentId))selectedStudentId=students.find(s=>profileInfo(s).is_demo)?.id||students[0]?.id||null;
  $('#directoryCount').textContent=students.length;
  $('#studentTable').innerHTML=students.map(s=>`<button type="button" class="directory-student ${s.id===selectedStudentId?'selected':''}" data-student-profile="${esc(s.id)}" aria-pressed="${s.id===selectedStudentId}">${personImage(s)}<span class="directory-student-copy"><strong>${esc(s.name)}</strong><span>${esc(s.city||'City not provided')} · ${esc(s.course||'Enquiry')}</span><span class="directory-student-meta">${statusBadge(s.status)}<small>${money(s.budget)}</small></span></span><i data-lucide="chevron-right"></i></button>`).join('')||'<div class="empty-state">No matching students.</div>';
  renderStudentProfile();icons();
@@ -239,7 +243,7 @@ function renderCharts(){const data=dashboardData(),months=dashboardBuckets().fil
 function advanceStudent(id){openStudentProfile(id)}
 async function advanceLead(id){const lead=find('leads',id),flow=['New Lead','Contacted','Interested','Follow-up Required','Converted'],index=flow.indexOf(lead.status);if(index>=0&&index<flow.length-1)await moveLead(id,flow[index+1])}
 function shortlist(id){if(propertyPeople(id).some(person=>person.booked))return;bootstrap.Modal.getOrCreateInstance($('#leadModal')).show();setTimeout(()=>$('#leadForm [name=property_id]').value=id,100)}
-function showView(name){if($('#dashboardPeriodSwitch'))$('#dashboardPeriodSwitch').hidden=name!=='dashboard';$$('.view').forEach(x=>x.classList.remove('active'));$(`#${name}View`).classList.add('active');$$('.nav-link[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const labels={dashboard:['Dashboard','Indian students, overseas apartments and arrivals.'],students:['Students','Manage every student enquiry.'],properties:['Properties','Find and shortlist the perfect stay.'],leads:['Lead pipeline','Move opportunities toward booking.'],calendar:['Calendar','Calls, visits and reminders.'],payments:['Payments','Transactions and confirmed bookings.'],settings:['Settings','Database and integration configuration.']};$('#viewTitle').textContent=labels[name][0];$('#viewSubtitle').textContent=labels[name][1];$('#sidebar').classList.remove('open');if(name==='calendar')setTimeout(()=>calendar?.updateSize(),50)}
+function showView(name){if(name==='pending')name='students';if(name==='students'||name==='finalized'){const mode=name==='finalized'?'finalized':'pending';if(studentDirectoryMode!==mode){studentDirectoryMode=mode;selectedStudentId=null;activeProfileTab='overview';$('#studentSearch').value='';$('#studentStatus').value='';}renderStudents();renderWorkspaceHeroes();}if($('#dashboardPeriodSwitch'))$('#dashboardPeriodSwitch').hidden=name!=='dashboard';$$('.view').forEach(x=>x.classList.remove('active'));$(`#${name==='finalized'?'students':name}View`).classList.add('active');$$('.nav-link[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const labels={dashboard:['Dashboard','Indian students, overseas apartments and arrivals.'],students:['Pending','Manage student enquiries awaiting finalization.'],finalized:['Finalized','Converted students and finalized bookings.'],properties:['Properties','Find and shortlist the perfect stay.'],leads:['Lead pipeline','Move opportunities toward booking.'],calendar:['Calendar','Calls, visits and reminders.'],payments:['Payments','Transactions and confirmed bookings.'],settings:['Settings','Database and integration configuration.']};$('#viewTitle').textContent=labels[name][0];$('#viewSubtitle').textContent=labels[name][1];$('#sidebar').classList.remove('open');if(name==='calendar')setTimeout(()=>calendar?.updateSize(),50)}
 function bindForm(id,route){$(id).addEventListener('submit',async event=>{
  event.preventDefault();const button=event.submitter; if(button)button.disabled=true;
  try{
@@ -285,7 +289,7 @@ const stageGuidance = {
 };
 function openStudentProfile(id){
  if(!data.students.some(s=>s.id===id)){notify('Student record not found');return}
- if(selectedStudentId!==id)activeProfileTab='overview';selectedStudentId=id;$('#profileError').hidden=true;renderStudents();showView('students');
+ const student=find('students',id);showView(student.status==='Converted'?'finalized':'students');if(selectedStudentId!==id)activeProfileTab='overview';selectedStudentId=id;$('#studentSearch').value='';$('#studentStatus').value='';$('#profileError').hidden=true;renderStudents();
 }
 let progressStudentId=null;
 function updateStudentProgress(student){
@@ -353,13 +357,13 @@ $('#profileBody').addEventListener('click',event=>{const tab=event.target.closes
 $('#profileBody').addEventListener('keydown',event=>{const tab=event.target.closest('[data-profile-tab]');if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const keys=['overview','followups','properties','payments','details'],index=keys.indexOf(tab.dataset.profileTab),next=event.key==='Home'?0:event.key==='End'?keys.length-1:(index+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;selectProfileTab(keys[next],true)});
 $('#profileBody').addEventListener('submit',async event=>{
  const form=event.target;if(!form.matches('#profileStatusForm,#profileFollowupForm,[data-complete-followup]'))return;event.preventDefault();
- const button=form.querySelector('button[type="submit"]');button.disabled=true;$('#profileError').hidden=true;
+ const button=form.querySelector('button[type="submit"]'),recordId=selectedStudentId;button.disabled=true;$('#profileError').hidden=true;
  try{
   const payload=Object.fromEntries(new FormData(form));
   if(form.id==='profileStatusForm')await api(`/api/students/${encodeURIComponent(selectedStudentId)}`,{method:'PATCH',body:JSON.stringify(payload)});
   else if(form.id==='profileFollowupForm')await api('/api/followups',{method:'POST',body:JSON.stringify({...payload,student_id:selectedStudentId})});
   else await api(`/api/followups/${encodeURIComponent(form.dataset.completeFollowup)}`,{method:'PATCH',body:JSON.stringify({status:'Done',outcome:payload.outcome})});
-  await load();notify('Student record updated');
+  await load();if(form.id==='profileStatusForm')openStudentProfile(recordId);notify('Student record updated');
  }catch(error){$('#profileError').textContent=error.message;$('#profileError').hidden=false}finally{button.disabled=false}
 });
 $('#logoutBtn').onclick=async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});location.replace('/login')};
@@ -708,7 +712,7 @@ async function startWorkspace(){
    headerDate.textContent=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date());
   }catch(_){headerDate.textContent='Wed, 14 Oct 2026'}
  }
- await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
+ await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','pending','finalized','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
 }
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#globalSearch').focus()}});
 if(!hostedStaticPage&&(typeof staticPreview==='undefined'||!staticPreview)){

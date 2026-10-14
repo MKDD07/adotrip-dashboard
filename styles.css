@@ -8397,3 +8397,5 @@ button, input, select, textarea { font-family: inherit; }
 .profile-delete-btn { position: absolute; top: 20px; right: 20px; }
 .student-profile .profile-heading { padding-right: 44px; }
 .student-profile .profile-progress { margin-right: 44px; }
+
+#studentWorkspaceActions[hidden], #studentStatus[hidden] { display: none; }

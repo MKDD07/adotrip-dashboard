@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="styles.css?v=605c19440b97d631" rel="stylesheet">
+    <link href="styles.css?v=4920af692b2a2271" rel="stylesheet">
 </head>
 
 <body>
@@ -29,7 +29,7 @@
         <aside class="sidebar" id="sidebar"><a class="brand brand-layout" href="#dashboard"><img src="https://www.adotrip.com/public/logo.webp" alt="Adotrip"><span>Student Stays</span></a>
             <p class="nav-caption nav-caption-layout">WORKSPACE</p>
             <nav class="nav nav-layout" id="mainNav">
-                <button class="nav-link active" data-view="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button><button class="nav-link" data-view="students"><i data-lucide="graduation-cap"></i><span>Students</span><b id="studentNavCount">0</b></button><button class="nav-link" data-view="properties"><i data-lucide="building-2"></i><span>Properties</span></button><button class="nav-link" data-view="leads"><i data-lucide="list-filter"></i><span>Lead pipeline</span></button><button class="nav-link" data-view="calendar"><i data-lucide="calendar-days"></i><span>Calendar</span></button><button class="nav-link" data-view="payments"><i data-lucide="credit-card"></i><span>Payments</span></button>
+                <button class="nav-link active" data-view="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button><button class="nav-link" data-view="students"><i data-lucide="graduation-cap"></i><span>Pending</span><b id="studentNavCount">0</b></button><button class="nav-link" data-view="finalized"><i data-lucide="badge-check"></i><span>Finalized</span><b id="finalizedNavCount">0</b></button><button class="nav-link" data-view="properties"><i data-lucide="building-2"></i><span>Properties</span></button><button class="nav-link" data-view="leads"><i data-lucide="list-filter"></i><span>Lead pipeline</span></button><button class="nav-link" data-view="calendar"><i data-lucide="calendar-days"></i><span>Calendar</span></button><button class="nav-link" data-view="payments"><i data-lucide="credit-card"></i><span>Payments</span></button>
             </nav>
             <p class="nav-caption nav-caption-layout-2">MANAGE</p>
             <nav class="nav nav-layout"><button class="nav-link" data-view="settings"><i data-lucide="settings"></i><span>Settings</span></button></nav>
@@ -152,13 +152,13 @@
         </section>
         <section class="view" id="studentsView">
             <div class="welcome-card workspace-hero welcome-card-layout student-workspace-hero">
-                <div><span class="eyebrow">STUDENT MANAGEMENT</span>
-                    <h2>Student workspace</h2>
-                    <p>Know every student. Keep their next step clear.</p>
+                <div><span class="eyebrow" id="studentWorkspaceEyebrow">PENDING STUDENTS</span>
+                    <h2 id="studentWorkspaceTitle">Pending students</h2>
+                    <p id="studentWorkspaceCopy">Student enquiries awaiting a finalized booking.</p>
 
 
                 </div><img class="hero-background" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23eeeee7%22/%3E%3C/svg%3E" data-target="student-workspace-hero" data-query="bright furnished serviced apartment living room interior" data-kind="other" alt="" aria-hidden="true" loading="lazy">
-                <div class="workspace-hero-footer"><div class="hero-actions"><button class="btn btn-light" id="importBtn"><i data-lucide="upload"></i>Import CSV</button><input type="file" id="csvInput" accept=".csv" hidden><button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#studentModal"><i data-lucide="plus"></i>Add student</button></div><div class="hero-facts" id="studentHeroFacts"></div></div>
+                <div class="workspace-hero-footer"><div class="hero-actions" id="studentWorkspaceActions"><button class="btn btn-light" id="importBtn"><i data-lucide="upload"></i>Import CSV</button><input type="file" id="csvInput" accept=".csv" hidden><button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#studentModal"><i data-lucide="plus"></i>Add student</button></div><div class="hero-facts" id="studentHeroFacts"></div></div>
             </div>
             <div class="student-workspace">
                 <article id="studentProfile" class="student-profile" aria-labelledby="profileTitle">
@@ -182,7 +182,7 @@
                 </article>
                 <aside class="student-directory" aria-label="Student directory">
                     <div class="directory-heading">
-                        <h3>All students</h3><span id="directoryCount" class="directory-count">0</span>
+                        <h3 id="studentDirectoryTitle">Pending students</h3><span id="directoryCount" class="directory-count">0</span>
                     </div>
                     <div class="directory-filters">
                         <div class="filter-search"><i data-lucide="search"></i><input id="studentSearch" class="form-control" placeholder="Search students" aria-label="Search students"></div><select id="studentStatus" class="form-select" aria-label="Filter by status">
@@ -191,7 +191,6 @@
                             <option>Contacted</option>
                             <option>Interested</option>
                             <option>Follow-up Required</option>
-                            <option>Converted</option>
                             <option>Lost</option>
                         </select>
                     </div>
@@ -497,7 +496,7 @@
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
-    <script src="app.js?v=a4916210bdea298d"></script>
+    <script src="app.js?v=78a2ec68c688ab01"></script>
 </body>
 
 </html>
