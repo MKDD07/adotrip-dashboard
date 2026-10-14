@@ -1,0 +1,13 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+test('pipeline filters opportunities, includes closed leads and persists stage changes',async()=>{
+ const nodes=new Map();const el=selector=>{if(!nodes.has(selector))nodes.set(selector,{value:'',innerHTML:'',textContent:'',hidden:false,style:{},classList:{add(){},remove(){},toggle(){}},addEventListener(){},setAttribute(){}});return nodes.get(selector)};
+ const state={students:[{id:'A',name:'Aditi Sharma',city:'Delhi',agent:'Arjun Mehta',budget:14000,status:'Interested'},{id:'B',name:'Rohan Nair',city:'Bengaluru',agent:'Priya Kapoor',budget:20000,status:'Converted'},{id:'C',name:'Neha Joshi',city:'Ahmedabad',agent:'Priya Kapoor',budget:17000,status:'Lost'}],properties:[{id:'P',name:'Campus Courtyard',price:13500}],leads:[{id:'L1',student_id:'A',property_id:'P',status:'Interested',followup:'2026-10-14'},{id:'L2',student_id:'B',status:'Converted'},{id:'L3',student_id:'C',status:'Lost'}],followups:[],payments:[]};
+ const writes=[];const context={document:{querySelector:el,querySelectorAll:()=>[],addEventListener(){}},window:{},URLSearchParams,setTimeout,console,fetch:async(url,options)=>{if(options?.method==='PATCH'){const body=JSON.parse(options.body);writes.push(body);state.leads[0].status=body.status;return {ok:true,text:async()=>JSON.stringify({ok:true})}}return {ok:true,text:async()=>JSON.stringify(state)}}};vm.createContext(context);vm.runInContext(readFileSync('app.js','utf8'),context);await new Promise(resolve=>setTimeout(resolve,20));
+ assert.equal(el('#activePipelineCount').textContent,1);assert.equal(el('#closedPipelineCount').textContent,2);assert.match(el('#kanban').innerHTML,/Aditi Sharma/);assert.ok(!el('#kanban').innerHTML.includes('Rohan Nair'));
+ el('#pipelineSearch').value='nothing matches';vm.runInContext('renderLeads()',context);assert.match(el('#kanban').innerHTML,/No matching opportunities/);assert.ok(!el('#kanban').innerHTML.includes('data-lead-id="L1"'));
+ el('#pipelineSearch').value='';el('#pipelineOwner').value='Priya Kapoor';vm.runInContext("pipelineMode='closed';renderLeads()",context);assert.match(el('#kanban').innerHTML,/Rohan Nair/);assert.match(el('#kanban').innerHTML,/Neha Joshi/);
+ el('#pipelineOwner').value='';vm.runInContext("pipelineMode='active';renderLeads()",context);await vm.runInContext("moveLead('L1','Follow-up Required')",context);assert.deepEqual(writes,[{status:'Follow-up Required'}]);assert.equal(state.leads[0].status,'Follow-up Required');assert.match(el('#kanban').innerHTML,/value="Follow-up Required" selected/);
+});

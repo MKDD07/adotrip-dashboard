@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "adotrip-campus-crm",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-10-13",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "252798d7-026a-414d-a0a7-daadbd24c70a",
+      "migrations_dir": "migrations",
+      "remote": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "adotrip-campus-crm-images",
+      "remote": true
+    }
+  ]
+}
