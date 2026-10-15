@@ -1,11 +1,11 @@
 import { AuthError } from './auth.mjs';
 const query=(db,text,values=[])=>db.prepare(text).bind(...values);
 const json=value=>Response.json(value,{headers:{'Cache-Control':'no-store'}});
-export function activityStatement(db,user,entity,action,record){
+export function activityStatement(db,user,entity,action,record,receiptGuard=null){
  const identity=record.name||record.purpose||(entity==='payments'?`₹${Number(record.amount||0).toLocaleString('en-IN')}`:entity==='leads'?'Opportunity':record.id);
  const label=[identity,record.status].filter(Boolean).join(' · ');
- return query(db,'INSERT INTO crm_activity(id,actor_id,actor_name,entity,action,student_id,label,created_at) VALUES(?,?,?,?,?,?,?,?)',[
-  'activity-'+crypto.randomUUID(),user.id,user.name,entity,action,entity==='students'?record.id:record.student_id||null,String(label),new Date().toISOString()
+ return query(db,'INSERT INTO crm_activity(id,actor_id,actor_name,entity,action,student_id,label,created_at) '+(receiptGuard?'SELECT ?,?,?,?,?,?,?,? WHERE changes()=1 AND EXISTS(SELECT 1 FROM payments WHERE id=?)':'VALUES(?,?,?,?,?,?,?,?)'),[
+  'activity-'+crypto.randomUUID(),user.id,user.name,entity,action,entity==='students'?record.id:record.student_id||null,String(label),new Date().toISOString(),...(receiptGuard?[receiptGuard]:[])
  ]);
 }
 function dateKey(date){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]).reduce((out,[key,value])=>({...out,[key]:value}),{});}

@@ -282,7 +282,7 @@
 
                 </div>
                 <img class="hero-background" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23eeeee7%22/%3E%3C/svg%3E" data-target="payment-workspace-hero" data-query="bright furnished serviced apartment living room interior" data-kind="other" alt="" aria-hidden="true" loading="lazy">
-                <div class="workspace-hero-footer"><div class="hero-actions"><button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#paymentModal"><i data-lucide="plus"></i>Record payment</button></div><div class="hero-facts" id="paymentHeroFacts"></div></div>
+                <div class="workspace-hero-footer"><div class="hero-actions"><button class="btn btn-dark" data-open-view="students"><i data-lucide="plus"></i>Record from student overview</button></div><div class="hero-facts" id="paymentHeroFacts"></div></div>
             </div>
             <div class="dashboard-grid" id="paymentStats"></div>
             <div class="panel panel-layout-2">
@@ -458,28 +458,6 @@
                                 <option>Low</option>
                             </select></label></div>
                     <div class="modal-footer"><button class="btn btn-brand">Schedule</button></div>
-                </form>
-            </div>
-        </div>
-    </div>
-    <div class="modal fade" id="paymentModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div><span class="panel-kicker">LOCAL PAYMENT FLOW</span>
-                        <h2 class="modal-title">Create payment</h2>
-                    </div><button class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form id="paymentForm">
-                    <div class="modal-body modal-body-layout"><label>Student<select class="form-select student-options form-select-layout" name="student_id" required></select></label><label>Property<select class="form-select property-options form-select-layout" name="property_id" required></select></label><label>Amount (INR)<input class="form-control form-control-layout" name="amount" type="number" required></label><label>Status<select class="form-select form-select-layout" name="status">
-                                <option>Successful</option>
-                                <option>Pending</option>
-                                <option>Failed</option>
-                                <option>Refunded</option>
-                            </select></label>
-                        <div class="info-box"><i data-lucide="shield-check"></i><span>Add your gateway key later. Until then this records local transactions without charging a card.</span></div>
-                    </div>
-                    <div class="modal-footer"><button class="btn btn-brand">Record payment</button></div>
                 </form>
             </div>
         </div>

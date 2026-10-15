@@ -1,3 +1,4 @@
+import { PaymentError, recordStagePayment } from './stage-payments.mjs';
 import { exchangeRatesResponse } from './exchange-rates.mjs';
 import { handleAuth, sessionUser, requireUser, AuthError } from './auth.mjs';
 import { handleMessages } from './messages.mjs';
@@ -85,6 +86,8 @@ async function handleApi(request, env, path, user) {
   let x; try { x = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON'); }
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw new HttpError(400, 'Expected a JSON object');
   if (request.method === 'POST') {
+    const receiptMatch=path.match(/^\/api\/students\/([^/]+)\/payments$/);
+    if(receiptMatch)return json(await recordStagePayment(db,user,decodeURIComponent(receiptMatch[1]),x),201);
     const restoreMatch=path.match(/^\/api\/students\/([^/]+)\/restore$/);
     if(restoreMatch){
       if(user.role!=='admin')throw new HttpError(403,'Only administrators can restore archived students');
@@ -172,7 +175,7 @@ export default {
    if(path==='/api/images'&&request.method==='GET')return imageSearch(request,env,context);
    return await handleApi(request,env,path,user);
   }catch(error){
-   if(error instanceof AuthError||error instanceof HttpError)return json({error:error.message},error.status);
+   if(error instanceof AuthError||error instanceof HttpError||error instanceof PaymentError)return json({error:error.message},error.status);
    if(/UNIQUE constraint/.test(error.message))return json({error:'Duplicate email or mobile'},409);
    console.error('CRM request failed',error);return json({error:'The request could not be completed. Please retry.'},503);
   }

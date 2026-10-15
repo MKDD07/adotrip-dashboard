@@ -1,0 +1,11 @@
+ALTER TABLE payments ADD COLUMN payment_stage TEXT;
+ALTER TABLE payments ADD COLUMN payment_method TEXT;
+ALTER TABLE payments ADD COLUMN transaction_id TEXT;
+ALTER TABLE payments ADD COLUMN utr TEXT;
+ALTER TABLE payments ADD COLUMN notes TEXT;
+ALTER TABLE payments ADD COLUMN recorded_by TEXT;
+ALTER TABLE payments ADD COLUMN request_key TEXT;
+CREATE UNIQUE INDEX payments_request_key_unique ON payments(request_key) WHERE request_key IS NOT NULL;
+CREATE UNIQUE INDEX payments_transaction_unique ON payments(transaction_id COLLATE NOCASE) WHERE transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX payments_utr_unique ON payments(utr COLLATE NOCASE) WHERE utr IS NOT NULL;
+CREATE INDEX payments_stage_idx ON payments(student_id,property_id,payment_stage,status);

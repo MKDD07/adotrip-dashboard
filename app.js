@@ -303,7 +303,7 @@ for(const kind of ['property','student']){
  };
  $(`#remove${kind[0].toUpperCase()+kind.slice(1)}Image`).onclick=()=>clearPhotoUpload(kind);
 }
-bindForm('#studentForm','/api/students');bindForm('#propertyForm','/api/properties');bindForm('#leadForm','/api/leads');bindForm('#followupForm','/api/followups');bindForm('#paymentForm','/api/payments');
+bindForm('#studentForm','/api/students');bindForm('#propertyForm','/api/properties');bindForm('#leadForm','/api/leads');bindForm('#followupForm','/api/followups');
 $('#importBtn').onclick=()=>$('#csvInput').click();$('#csvInput').onchange=e=>{const r=new FileReader();r.onload=async()=>{const lines=r.result.trim().split(/\r?\n/),heads=lines.shift().split(',').map(x=>x.trim().toLowerCase()),rows=lines.map(line=>{const v=line.split(',').map(x=>x.trim().replace(/^"|"$/g,''));return Object.fromEntries(heads.map((h,i)=>[h,v[i]||'']))});const out=await api('/api/students/import',{method:'POST',body:JSON.stringify({rows})});await load();notify(`${out.added} imported · ${out.skipped} skipped`)};r.readAsText(e.target.files[0])};
 $('#exportBtn').onclick=async()=>{const out=await api('/api/export'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));a.download=`adotrip-crm-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)};$('#keyForm').onsubmit=e=>{e.preventDefault();localStorage.setItem('adotrip_keys',JSON.stringify(Object.fromEntries(new FormData(e.target))));notify('Keys saved locally')};
 
@@ -335,12 +335,15 @@ function updateStudentProgress(student){
 const profileCurrencies=['INR','USD','GBP','EUR','CAD','AUD','AED','SGD'];
 let profileCurrency='INR',profileFx=null,profileFxLoading=false,profileFxError='',profileFxFetchedAt=0;
 function studentPaymentPlan(budget,payments){
- const total=Math.max(0,Math.round((Number(budget)||0)*100));
- const received=payments.filter(p=>p.status==='Successful').reduce((sum,p)=>sum+Math.max(0,Math.round((Number(p.amount)||0)*100)),0);
+ const total=Math.max(0,Math.round((Number(budget)||0)*100)),keys=['initial','accommodation','final'];
+ const successful=payments.filter(p=>p.status==='Successful');
+ const cents=p=>Math.max(0,Math.round((Number(p.amount)||0)*100));
+ const received=successful.reduce((sum,p)=>sum+cents(p),0);
  const first=Math.round(total*.1),second=Math.round(total*.6),amounts=[first,second,total-first-second];
- let available=received;
+ let legacy=successful.filter(p=>!keys.includes(p.payment_stage)).reduce((sum,p)=>sum+cents(p),0);
  const stages=amounts.map((amount,index)=>{
-  const allocated=Math.min(amount,available);available-=allocated;
+  const tagged=successful.filter(p=>p.payment_stage===keys[index]).reduce((sum,p)=>sum+cents(p),0),applied=Math.min(Math.max(0,amount-tagged),legacy);legacy-=applied;
+  const allocated=Math.min(amount,tagged+applied);
   return {percent:[10,60,30][index],amount:amount/100,received:allocated/100,due:(amount-allocated)/100,status:!total?'Not set':allocated===amount?'Paid':allocated?'Part paid':'Awaiting payment'};
  });
  return {total:total/100,received:received/100,outstanding:Math.max(0,total-received)/100,excess:Math.max(0,received-total)/100,stages};
@@ -351,14 +354,68 @@ function profileMoney(amount){
  return rate?'≈ '+new Intl.NumberFormat('en-IN',{style:'currency',currency:profileCurrency,currencyDisplay:'code',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(amount)*rate):'—';
 }
 function profileMoneyMarkup(amount){return `<span data-profile-amount="${Number(amount)||0}">${esc(profileMoney(amount))}</span>`}
+const paymentStageKeys=['initial','accommodation','final'];
+const paymentStageNames=['Initial payment','Accommodation payment','Final payment'];
+const paymentMethods=['UPI','Bank transfer','Card','Cash','Other'];
+const paymentPropertySelection=new Map();
+let stagePaymentDraft=null,stagePaymentBusy=false,stagePaymentError='';
+function assignedPaymentContext(student){
+ const state=typeof data==='undefined'?{leads:[],properties:[],payments:[]}:data;
+ const leads=state.leads.filter(l=>l.student_id===student.id&&l.status!=='Lost'&&state.properties.some(p=>p.id===l.property_id));
+ const confirmed=leads.filter(l=>l.status==='Converted'),eligible=confirmed.length?confirmed:leads;
+ let ids=[...new Set(eligible.map(l=>l.property_id))];
+ if(!ids.length)ids=[...new Set(state.payments.filter(p=>p.student_id===student.id&&p.status==='Successful'&&p.booking==='Confirmed'&&p.property_id).map(p=>p.property_id))];
+ const properties=ids.map(id=>state.properties.find(p=>p.id===id)).filter(Boolean),selected=paymentPropertySelection.get(student.id);
+ const property=properties.find(p=>p.id===selected)||(properties.length===1?properties[0]:null);
+ return {properties,property,total:property?(Number(property.price)||0):(Number(student.budget)||0)};
+}
+function paymentReceiptDetails(payment){
+ return [payment.payment_method&&`Method: ${payment.payment_method}`,payment.transaction_id&&`Transaction ID: ${payment.transaction_id}`,payment.utr&&`UTR: ${payment.utr}`].filter(Boolean).map(text=>`<small>${esc(text)}</small>`).join('');
+}
+function stagePaymentFormMarkup(student,context,plan){
+ const draft=stagePaymentDraft;if(!draft||draft.student_id!==student.id||draft.property_id!==context.property?.id)return '';
+ const index=paymentStageKeys.indexOf(draft.payment_stage),due=plan.stages[index]?.due||0;
+ return `<form class="stage-payment-form" data-stage-payment-form aria-labelledby="stagePaymentFormTitle"><div class="stage-payment-form-heading"><div><span class="panel-kicker">RECORD RECEIPT</span><h4 id="stagePaymentFormTitle">${paymentStageNames[index]}</h4><p>${esc(student.name)} · ${esc(studentReference(student))}<br>${esc(context.property.name)}</p></div><button type="button" class="text-btn" data-close-stage-payment ${stagePaymentBusy?'disabled':''}>Cancel</button></div><p class="stage-payment-error" role="alert" ${stagePaymentError?'':'hidden'}>${esc(stagePaymentError)}</p><fieldset ${stagePaymentBusy?'disabled':''}>
+ <div class="stage-payment-fields"><label>Amount received (INR)<input id="stagePaymentAmount" class="form-control" name="amount" type="number" min="0.01" max="${due.toFixed(2)}" step="0.01" value="${esc(draft.amount)}" required><small>Stage balance: ${money(due)} INR</small></label><label>Payment method<select id="stagePaymentMethod" class="form-select" name="payment_method" required>${paymentMethods.map(method=>`<option ${draft.payment_method===method?'selected':''}>${method}</option>`).join('')}</select></label><label>Transaction ID / receipt number<input id="stagePaymentTransaction" class="form-control" name="transaction_id" maxlength="100" value="${esc(draft.transaction_id)}" ${draft.payment_method==='Card'?'required':''} autocomplete="off"></label><label>UTR / bank reference<input id="stagePaymentUtr" class="form-control" name="utr" maxlength="100" value="${esc(draft.utr)}" ${['UPI','Bank transfer'].includes(draft.payment_method)?'required':''} autocomplete="off"><small>Required for UPI and bank transfers.</small></label><label>Payment date and time (India)<input id="stagePaymentDate" class="form-control" type="datetime-local" name="paid_at" value="${esc(draft.paid_at)}" required></label><label>Notes (optional)<textarea id="stagePaymentNotes" class="form-control" name="notes" maxlength="1000" rows="2">${esc(draft.notes)}</textarea></label></div><div class="stage-payment-submit"><span>This records a payment you have received.</span><button type="submit" class="btn btn-dark">${stagePaymentBusy?'Saving receipt…':'Save payment'}</button></div></fieldset></form>`;
+}
+function paymentHistoryMarkup(payments){
+ if(!payments.length)return '';
+ return `<details class="stage-payment-history" open><summary>Payment receipts <span>${payments.length}</span></summary>${[...payments].sort((a,b)=>String(b.paid_at).localeCompare(String(a.paid_at))).map(payment=>`<article class="stage-receipt"><div><strong>${paymentStageNames[paymentStageKeys.indexOf(payment.payment_stage)]||'Previous payment'}</strong><small>${esc(profileDate(payment.paid_at))}</small>${paymentReceiptDetails(payment)}${payment.notes?`<small>Note: ${esc(payment.notes)}</small>`:''}</div><div><strong>${profileMoneyMarkup(payment.amount)}</strong>${statusBadge(payment.status)}</div></article>`).join('')}</details>`;
+}
+function openStagePayment(stage){
+ if(stagePaymentBusy)return;
+ const student=find('students',selectedStudentId),context=assignedPaymentContext(student),index=paymentStageKeys.indexOf(stage);
+ if(!student.id||!context.property||index<0)return;
+ const payments=data.payments.filter(p=>p.student_id===student.id&&p.property_id===context.property.id),plan=studentPaymentPlan(context.total,payments),due=plan.stages[index].due;
+ if(due<=0)return;
+ const now=new Date(),time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);
+ stagePaymentDraft={student_id:student.id,property_id:context.property.id,payment_stage:stage,amount:due.toFixed(2),payment_method:'UPI',transaction_id:'',utr:'',notes:'',paid_at:`${dashboardDateKey(now)}T${time}`,request_key:globalThis.crypto?.randomUUID?.()||`receipt-${Date.now()}-${Math.random().toString(36).slice(2)}`};
+ stagePaymentError='';updateProfilePaymentDisplay();$('#stagePaymentAmount')?.focus?.();$('#stagePaymentFormTitle')?.scrollIntoView?.({block:'nearest',behavior:'smooth'});
+}
+async function saveStagePayment(event){
+ event.preventDefault();if(stagePaymentBusy||!stagePaymentDraft||stagePaymentDraft.student_id!==selectedStudentId)return;
+ const form=event.target;if(!form.reportValidity())return;
+ const values=Object.fromEntries(new FormData(form));stagePaymentDraft={...stagePaymentDraft,...values};
+ if(stagePaymentDraft.payment_method==='Other'&&!stagePaymentDraft.transaction_id.trim()&&!stagePaymentDraft.utr.trim()){stagePaymentError='Enter a transaction ID or payment reference.';updateProfilePaymentDisplay();return}
+ const draft={...stagePaymentDraft};stagePaymentBusy=true;stagePaymentError='';updateProfilePaymentDisplay();
+ try{
+  await api(`/api/students/${encodeURIComponent(draft.student_id)}/payments`,{method:'POST',body:JSON.stringify({...draft,paid_at:new Date(draft.paid_at+'+05:30').toISOString()})});
+  stagePaymentDraft=null;notify('Payment receipt saved');await load();
+ }catch(error){stagePaymentError=error.message;if(!stagePaymentDraft){$('#profileError').textContent='Payment saved. Unable to refresh the workspace: '+error.message;$('#profileError').hidden=false}}
+ finally{stagePaymentBusy=false;updateProfilePaymentDisplay()}
+}
 function paymentPlanMarkup(student,payments){
- const plan=studentPaymentPlan(student.budget,payments),rate=profileFx?.rates?.[profileCurrency];
+ const context=assignedPaymentContext(student);payments=context.property?payments.filter(p=>p.property_id===context.property.id):context.properties.length>1?[]:payments;
+ const plan=studentPaymentPlan(context.total,payments),rate=profileFx?.rates?.[profileCurrency];
  const rateText=profileFxLoading?'Updating exchange rates…':profileCurrency==='INR'?(profileFxError||'Select a currency to see a converted estimate.'):rate?`${profileFx.stale?'Last available rate':'Daily reference rate'} · ${profileFx.dates[profileCurrency]} · 1 INR = ${rate} ${profileCurrency}`:(profileFxError||'Exchange rate unavailable. Original INR amounts are shown below.');
- return `<section class="student-payment-plan" aria-labelledby="paymentPlanTitle"><div class="payment-plan-heading"><div><span class="panel-kicker">PAYMENT PLAN · 10 / 60 / 30</span><h3 id="paymentPlanTitle">Accommodation payments</h3><p>Based on monthly budget: ${money(student.budget)} INR</p></div><label class="payment-currency-label" for="profileCurrency">Display currency<select id="profileCurrency" class="form-select form-select-sm">${profileCurrencies.map(code=>`<option value="${code}" ${profileCurrency===code?'selected':''}>${code}</option>`).join('')}</select></label></div>
+ return `<section class="student-payment-plan" aria-labelledby="paymentPlanTitle"><div class="payment-plan-heading"><div><span class="panel-kicker">PAYMENT PLAN · 10 / 60 / 30</span><h3 id="paymentPlanTitle">Accommodation payments</h3><p>${context.property?'Assigned monthly rent':'Monthly budget estimate'}: ${money(context.total)} INR</p></div><label class="payment-currency-label" for="profileCurrency">Display currency<select id="profileCurrency" class="form-select form-select-sm">${profileCurrencies.map(code=>`<option value="${code}" ${profileCurrency===code?'selected':''}>${code}</option>`).join('')}</select></label></div>
+ <div class="payment-assigned-property"><span class="panel-kicker">ASSIGNED PROPERTY</span>${context.properties.length>1?`<label class="visually-hidden" for="paymentAssignedProperty">Property for this payment</label><select id="paymentAssignedProperty" class="form-select" ${stagePaymentBusy?'disabled':''}><option value="">Choose an assigned property</option>${context.properties.map(property=>`<option value="${esc(property.id)}" ${context.property?.id===property.id?'selected':''}>${esc(property.name)}</option>`).join('')}</select>`:`<strong>${esc(context.property?.name||'No property assigned yet')}</strong>`}${context.property?`<small>${esc(context.property.location||'')} · ${money(context.total)} INR / month</small>`:'<small>Choose an assigned property to record a receipt. Property assignments are managed in Properties & bookings.</small>'}</div>
  <div class="payment-plan-summary"><div><span>Planned amount</span><strong>${profileMoneyMarkup(plan.total)}</strong></div><div><span>Payments received</span><strong>${profileMoneyMarkup(plan.received)}</strong></div><div><span>Balance remaining</span><strong>${profileMoneyMarkup(plan.outstanding)}</strong></div></div>
- <div class="payment-stage-grid">${plan.stages.map((stage,index)=>`<article class="payment-stage ${stage.status==='Paid'?'payment-stage-paid':''}"><div class="payment-stage-top"><span class="payment-stage-number">0${index+1}</span><span class="payment-stage-percent">${stage.percent}%</span></div><h4>${['Initial payment','Accommodation payment','Final payment'][index]}</h4><p>${['To start the process','After accommodation completion','To complete the payment plan'][index]}</p><strong class="payment-stage-amount">${profileMoneyMarkup(stage.amount)}</strong><span class="payment-stage-status">${stage.status}</span><div class="payment-stage-track" role="progressbar" aria-label="${['Initial','Accommodation','Final'][index]} payment received" aria-valuenow="${stage.amount?Math.round(stage.received/stage.amount*100):0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${stage.amount?stage.received/stage.amount*100:0}%"></span></div><div class="payment-stage-balance"><span>Received <b>${profileMoneyMarkup(stage.received)}</b></span><span>Due <b>${profileMoneyMarkup(stage.due)}</b></span></div></article>`).join('')}</div>
- ${!plan.total?'<p class="payment-plan-note">Set a monthly budget to calculate the payment stages.</p>':''}${plan.excess?`<p class="payment-plan-note">Received above this plan: ${profileMoneyMarkup(plan.excess)}.</p>`:''}
- <p class="payment-plan-note">Successful payments are applied to the initial, accommodation and final stages in order.</p>
+ <div class="payment-stage-grid">${plan.stages.map((stage,index)=>`<article class="payment-stage payment-stage-${paymentStageKeys[index]} ${stage.status==='Paid'?'payment-stage-paid':''}"><div class="payment-stage-top"><span class="payment-stage-number">0${index+1}</span><span class="payment-stage-percent">${stage.percent}%</span></div><h4>${['Initial payment','Accommodation payment','Final payment'][index]}</h4><p>${['To start the process','After accommodation completion','To complete the payment plan'][index]}</p><strong class="payment-stage-amount">${profileMoneyMarkup(stage.amount)}</strong><span class="payment-stage-status">${stage.status}</span><div class="payment-stage-track" role="progressbar" aria-label="${['Initial','Accommodation','Final'][index]} payment received" aria-valuenow="${stage.amount?Math.round(stage.received/stage.amount*100):0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${stage.amount?stage.received/stage.amount*100:0}%"></span></div><div class="payment-stage-balance"><span>Received <b>${profileMoneyMarkup(stage.received)}</b></span><span>Due <b>${profileMoneyMarkup(stage.due)}</b></span></div><button type="button" class="stage-add-payment" data-record-stage="${paymentStageKeys[index]}" ${!context.property||stage.due<=0||stagePaymentBusy?'disabled':''}>${stage.status==='Paid'?'Paid in full':'Add payment'}</button></article>`).join('')}</div>
+ ${stagePaymentFormMarkup(student,context,plan)}
+ ${paymentHistoryMarkup(payments)}
+ ${!plan.total?`<p class="payment-plan-note">Set ${context.property?'the assigned property rent':'a monthly budget'} to calculate the payment stages.</p>`:''}${plan.excess?`<p class="payment-plan-note">Received above this plan: ${profileMoneyMarkup(plan.excess)}.</p>`:''}
+ <p class="payment-plan-note">Receipts are linked to their payment stage. Previous receipts are applied in stage order.</p>
  <div class="payment-fx-footer"><p id="profileFxStatus" role="status">${esc(rateText)}</p><button type="button" class="text-btn" data-refresh-profile-rates ${profileFxLoading?'disabled':''}>${profileFxLoading?'Updating…':'Refresh rates'}</button></div><p class="payment-plan-note">Payments are recorded in INR. Currency conversions are estimates using <a href="https://frankfurter.dev/" target="_blank" rel="noopener noreferrer">Frankfurter</a> daily rates; bank rates and fees may differ.</p></section>`;
 }
 function updateProfilePaymentDisplay(){
@@ -366,7 +423,7 @@ function updateProfilePaymentDisplay(){
  const holder=$('#studentPaymentPlan'),focused=document.activeElement?.id;
  if(holder)holder.innerHTML=paymentPlanMarkup(student,data.payments.filter(p=>p.student_id===student.id));
  for(const node of $$('#profileBody [data-profile-amount]'))node.textContent=profileMoney(Number(node.dataset.profileAmount));
- if(focused==='profileCurrency')$('#profileCurrency')?.focus?.();
+ if(focused==='profileCurrency'||focused?.startsWith('stagePayment'))$('#'+focused)?.focus?.();
 }
 async function ensureProfileExchangeRates(force=false){
  if(profileFxLoading||!force&&profileFx&&Date.now()-profileFxFetchedAt<3600000)return;
@@ -402,7 +459,7 @@ function renderStudentProfile(){
  <details class="profile-disclosure followup-history"><summary>Completed <span>${done.length}</span></summary>${[...done].sort((a,b)=>new Date(b.completed_at||b.starts_at)-new Date(a.completed_at||a.starts_at)).map(task=>`<article class="completed-task"><div><strong>${esc(task.purpose)}</strong><small>${esc(profileDate(task.completed_at||task.starts_at))}</small></div><p>${esc(task.outcome||'No outcome recorded.')}</p></article>`).join('')||'<p class="profile-empty">No completed follow-ups.</p>'}</details>
  </div>`,
  properties:`<section class="profile-section"><div class="profile-section-heading"><h3>Properties & bookings</h3><span class="section-count">${leads.length} shortlisted</span></div><div class="profile-property-list">${leads.map(l=>{const p=find('properties',l.property_id);return `<article class="profile-property">${propertyPhoto(p,`furnished serviced apartment interior`)}<div><strong>${esc(p.name||'Property not selected')}</strong><p>${esc(p.location||'Location not provided')}</p><div class="property-detail-foot"><span>${p.price?money(p.price)+'/mo':'Price pending'}</span>${statusBadge(l.status)}</div><details><summary>Opportunity notes</summary><p>${esc(l.notes||'No notes recorded.')}</p><small>Follow-up: ${esc(l.followup||'Not scheduled')}</small></details></div></article>`}).join('')||'<p class="profile-empty">No properties shortlisted yet.</p>'}</div></section>`,
- payments:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="credit-card"></i>Payments & bookings <span>${payments.length}</span></h3>${payments.map(p=>`<article class="payment-detail-row"><div><strong>${profileMoneyMarkup(p.amount)}</strong><small>${esc(find('properties',p.property_id).name||'No property')} · ${esc(p.booking)}</small><small>${esc(p.id)} · ${esc(profileDate(p.paid_at))}</small></div>${statusBadge(p.status)}</article>`).join('')||'<p class="profile-empty">No payments recorded.</p>'}</section>`,
+ payments:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="credit-card"></i>Payments & bookings <span>${payments.length}</span></h3>${payments.map(p=>`<article class="payment-detail-row"><div><strong>${profileMoneyMarkup(p.amount)}</strong><small>${esc(find('properties',p.property_id).name||'No property')} · ${esc(p.booking)}</small><small>${esc(p.id)} · ${esc(profileDate(p.paid_at))}</small>${paymentReceiptDetails(p)}</div>${statusBadge(p.status)}</article>`).join('')||'<p class="profile-empty">No payments recorded.</p>'}</section>`,
  details:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="user-round"></i>Personal & education details</h3>${info([['Mobile',student.mobile],['Email',student.email],['Nationality',profile.nationality],['Date of birth',profile.date_of_birth],['Gender',profile.gender],['Hometown',profile.hometown],['Address',profile.address],['University',profile.college],['Destination country',profile.destination_country],['Study year',profile.study_year],['Guardian',profile.guardian_name],['Relationship',profile.guardian_relation],['Guardian mobile',profile.guardian_mobile],['Languages',profile.languages],['Source',profile.source],['Created',profileDate(student.created_at)]])}</section>
 <section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="clipboard-list"></i>Accommodation requirements</h3>${info([['Preferred area',profile.preferred_area],['Apartment',profile.room_preference],['Meals',profile.food_preference],['Move-in',profile.move_in_date],['Duration',profile.stay_duration]])}<p class="profile-notes">${esc(student.notes||'No additional requirements.')}</p></section>`
  };
@@ -464,6 +521,13 @@ function selectProfileTab(key,focus=false){
  $$('#profileBody [data-profile-tab]').forEach(button=>{const active=button.dataset.profileTab===key;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;if(active&&focus)button.focus()});
  $$('#profileBody .student-profile-panel').forEach(panel=>panel.hidden=panel.id!=='student-panel-'+key);icons();
 }
+$('#profileBody').addEventListener('input',event=>{if(stagePaymentDraft&&event.target.closest('[data-stage-payment-form]')&&event.target.name)stagePaymentDraft[event.target.name]=event.target.value});
+$('#profileBody').addEventListener('change',event=>{
+ if(event.target.id==='paymentAssignedProperty'&&!stagePaymentBusy){paymentPropertySelection.set(selectedStudentId,event.target.value);stagePaymentDraft=null;stagePaymentError='';updateProfilePaymentDisplay()}
+ if(stagePaymentDraft&&event.target.closest('[data-stage-payment-form]')&&event.target.name){stagePaymentDraft[event.target.name]=event.target.value;if(event.target.name==='payment_method')updateProfilePaymentDisplay()}
+});
+$('#profileBody').addEventListener('click',event=>{const add=event.target.closest('[data-record-stage]');if(add&&!add.disabled)openStagePayment(add.dataset.recordStage);if(event.target.closest('[data-close-stage-payment]')&&!stagePaymentBusy){stagePaymentDraft=null;stagePaymentError='';updateProfilePaymentDisplay()}});
+$('#profileBody').addEventListener('submit',event=>{if(event.target.matches('[data-stage-payment-form]'))saveStagePayment(event)});
 $('#profileBody').addEventListener('change',event=>{if(event.target.id==='profileCurrency'&&profileCurrencies.includes(event.target.value)){profileCurrency=event.target.value;updateProfilePaymentDisplay();ensureProfileExchangeRates()}});
 $('#profileBody').addEventListener('click',event=>{const tab=event.target.closest('[data-profile-tab]');if(tab)selectProfileTab(tab.dataset.profileTab);if(event.target.closest('[data-refresh-profile-rates]'))ensureProfileExchangeRates(true)});
 $('#profileBody').addEventListener('keydown',event=>{const tab=event.target.closest('[data-profile-tab]');if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const keys=['overview','followups','properties','payments','details'],index=keys.indexOf(tab.dataset.profileTab),next=event.key==='Home'?0:event.key==='End'?keys.length-1:(index+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;selectProfileTab(keys[next],true)});
@@ -573,7 +637,7 @@ async function refreshWorkspace(){
   if(stateResult.status==='rejected')throw stateResult.reason;const state=stateResult.value;
   if(!['students','properties','leads','followups','payments'].every(key=>Array.isArray(state[key])))throw Error('Invalid CRM data');
   const changed=JSON.stringify(state)!==JSON.stringify(data);data=state;
-  const editing=document.activeElement?.closest?.('form')||$('#profileBody')?.querySelector?.('details[open] form')||$('.modal.show');
+  const editing=stagePaymentDraft||stagePaymentBusy||document.activeElement?.closest?.('form')||$('#profileBody')?.querySelector?.('details[open] form')||$('.modal.show');
   pendingWorkspaceRender ||= changed;
   if(pendingWorkspaceRender&&!editing){render();pendingWorkspaceRender=false}else{
    renderTodaySchedule();

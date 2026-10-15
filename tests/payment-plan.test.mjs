@@ -46,3 +46,20 @@ test('rate service rejects missing, invalid and unavailable rates rather than in
   await assert.rejects(createExchangeRateService({fetcher:async()=>result})());
  }
 });
+
+test('tagged receipts stay on their stage and legacy receipts fill only the remaining stage balances',()=>{
+ const run=helpers();
+ const plan=run("studentPaymentPlan(239000,[{amount:71700,status:'Successful',payment_stage:'final'},{amount:23900,status:'Successful'}])");
+ assert.deepEqual(plan.stages.map(s=>s.received),[23900,0,71700]);
+ assert.deepEqual(plan.stages.map(s=>s.due),[0,143400,0]);
+});
+test('assigned property resolves automatically, prefers the confirmed booking and never guesses between several assignments',()=>{
+ const run=helpers(),state={students:[],leads:[{student_id:'S1',property_id:'P1',status:'Interested'}],properties:[{id:'P1',name:'London assigned studio',price:239000},{id:'P2',name:'Other assigned studio',price:300000}],payments:[]};
+ assert.equal(run(`(globalThis.data=${JSON.stringify(state)},assignedPaymentContext({id:'S1',budget:250000})).property.id`),'P1');
+ assert.equal(run("assignedPaymentContext({id:'S1',budget:250000}).total"),239000);
+ assert.equal(run("(data.leads.push({student_id:'S1',property_id:'P2',status:'Interested'}),assignedPaymentContext({id:'S1'}).property)"),null);
+ assert.equal(run("(data.leads[1].status='Converted',assignedPaymentContext({id:'S1'}).property.id)"),'P2');
+ const markup=run("paymentPlanMarkup({id:'S1',budget:250000},[])");
+ assert.equal(run("(data.properties[1].price=0,assignedPaymentContext({id:'S1',budget:250000}).total)"),0);
+ assert.match(markup,/Other assigned studio/);assert.match(markup,/payment-stage-initial/);assert.match(markup,/data-record-stage="initial"/);
+});
