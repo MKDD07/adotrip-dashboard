@@ -25,3 +25,29 @@ test('dashboard periods filter each record by its reporting date and use India d
  assert.equal(run("dashboardBuckets(new Date('2026-10-14')).length"),12);
  assert.equal(context.data.students.length,5);
 });
+
+test('selected year changes enquiry, booking and payment totals and monthly chart buckets', () => {
+ const source=readFileSync('app.js','utf8');
+ const context=vm.createContext({data:{
+  students:[{created_at:'2024-10-03'},{created_at:'2025-10-03'},{created_at:'2025-12-03'},{created_at:'2026-10-03'}],
+  leads:[{created_at:'2024-10-03',status:'Converted'},{created_at:'2025-10-03',status:'Converted'},{created_at:'2025-12-03',status:'Converted'}],
+  payments:[{paid_at:'2024-10-03',amount:187000},{paid_at:'2025-10-03',amount:225000}],followups:[],properties:[]
+ }});
+ vm.runInContext(source.slice(source.indexOf("let dashboardPeriod='month';"),source.indexOf('function updateDashboardPeriod()')),context);
+ const run=code=>JSON.parse(vm.runInContext(`JSON.stringify(${code})`,context));
+ vm.runInContext("dashboardYear=2024;dashboardPeriod='year'",context);
+ assert.equal(run('dashboardData().students.length'),1);
+ assert.equal(run("dashboardData().leads.filter(l=>l.status==='Converted').length"),1);
+ assert.equal(run('dashboardData().payments[0].amount'),187000);
+ assert.equal(run('dashboardBuckets()[0].key'),'2024-01');
+ assert.equal(run('dashboardBuckets()[11].key'),'2024-12');
+ vm.runInContext('dashboardYear=2025',context);
+ assert.equal(run('dashboardData().students.length'),2);
+ assert.equal(run("dashboardData().leads.filter(l=>l.status==='Converted').length"),2);
+ assert.equal(run('dashboardData().payments[0].amount'),225000);
+ assert.equal(run('dashboardPeriodLabel()'),'2025');
+ vm.runInContext("dashboardPeriod='month'",context);
+ assert.equal(run("dashboardData(new Date('2026-10-15')).students.length"),1);
+ vm.runInContext('dashboardYear=2024',context);
+ assert.equal(run("dashboardBuckets(new Date('2026-02-15')).length"),29);
+});

@@ -58,6 +58,7 @@ function showDataError(error){
 if($('#retryData'))$('#retryData').onclick=()=>load().catch(showDataError);
 function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderCharts();icons()}
 let dashboardPeriod='month';
+let dashboardYear=null;
 let studentDirectoryMode='pending';
 const studentGroup=()=>data.students.filter(student=>(student.status==='Converted')===(studentDirectoryMode==='finalized'));
 function dashboardDateKey(value){
@@ -69,13 +70,31 @@ function dashboardDateKey(value){
  const part=type=>parts.find(p=>p.type===type).value;
  return `${part('year')}-${part('month')}-${part('day')}`;
 }
+function dashboardReportingKey(now=new Date()){
+ const key=dashboardDateKey(now);
+ return `${dashboardYear??key.slice(0,4)}${key.slice(4)}`;
+}
+function dashboardPeriodLabel(){
+ const key=dashboardReportingKey();
+ return dashboardPeriod==='year'?key.slice(0,4):`${new Date(`${key.slice(0,7)}-01T12:00:00+05:30`).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',month:'short'})} ${key.slice(0,4)}`;
+}
+function renderDashboardYears(){
+ const select=$('#dashboardYear');if(!select)return;
+ const current=Number(dashboardDateKey(new Date()).slice(0,4));
+ const years=new Set([current,current-1,current-2,Number(dashboardYear??current)]);
+ for(const [records,field] of [[data.students,'created_at'],[data.leads,'created_at'],[data.payments,'paid_at'],[data.followups,'starts_at']]){
+  for(const record of records){const key=dashboardDateKey(record[field]);if(key)years.add(Number(key.slice(0,4)))}
+ }
+ select.innerHTML=[...years].sort((a,b)=>b-a).map(year=>`<option value="${year}">${year}</option>`).join('');
+ select.value=String(dashboardYear??current);
+}
 function dashboardData(now=new Date()){
- const key=dashboardDateKey(now).slice(0,dashboardPeriod==='year'?4:7);
+ const key=dashboardReportingKey(now).slice(0,dashboardPeriod==='year'?4:7);
  const within=(record,field='created_at')=>dashboardDateKey(record[field]).startsWith(key);
  return {...data,students:data.students.filter(r=>within(r)),leads:data.leads.filter(r=>within(r)),payments:data.payments.filter(r=>within(r,r.paid_at?'paid_at':'created_at')),followups:data.followups.filter(r=>within(r,'starts_at'))};
 }
 function dashboardBuckets(now=new Date()){
- const key=dashboardDateKey(now),year=Number(key.slice(0,4)),month=Number(key.slice(5,7));
+ const key=dashboardReportingKey(now),year=Number(key.slice(0,4)),month=Number(key.slice(5,7));
  return Array.from({length:dashboardPeriod==='year'?12:new Date(year,month,0).getDate()},(_,i)=>({
   key:dashboardPeriod==='year'?`${year}-${String(i+1).padStart(2,'0')}`:`${key.slice(0,7)}-${String(i+1).padStart(2,'0')}`,
   label:dashboardPeriod==='year'?new Date(year,i,1).toLocaleDateString('en-IN',{month:'short'}):String(i+1)
@@ -84,10 +103,11 @@ function dashboardBuckets(now=new Date()){
 function updateDashboardPeriod(){
  const control=$('#dashboardPeriodSwitch');if(control)control.dataset.period=dashboardPeriod;
  $$('[data-dashboard-period]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dashboardPeriod===dashboardPeriod)));
- const label=$('#dashboardPeriodLabel');if(label)label.textContent=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',...(dashboardPeriod==='month'?{month:'short'}:{}),year:'numeric'}).format(new Date());
+ const label=$('#dashboardPeriodLabel');if(label)label.textContent=dashboardPeriodLabel();
  renderWorkspaceHeroes();renderStats();renderCharts();icons();
 }
 $$('[data-dashboard-period]').forEach(button=>button.onclick=()=>{dashboardPeriod=button.dataset.dashboardPeriod;updateDashboardPeriod()});
+if($('#dashboardYear'))$('#dashboardYear').onchange=event=>{dashboardYear=Number(event.target.value);dashboardPeriod='year';updateDashboardPeriod()};
 function renderWorkspaceHeroes(){
  const active=data.leads.filter(l=>!['Converted','Lost'].includes(l.status)).length,pending=data.followups.filter(f=>f.status!=='Done').length,assigned=data.students.filter(s=>s.agent).length;
  const dashboard=dashboardData(),dashboardActive=dashboard.leads.filter(l=>!['Converted','Lost'].includes(l.status)).length,dashboardPending=dashboard.followups.filter(f=>f.status!=='Done').length;
@@ -220,10 +240,10 @@ function fillOptions(){$$('.student-options').forEach(el=>el.innerHTML='<option 
 function uiFontSize(token){
  return typeof getComputedStyle==='function'?getComputedStyle(document.documentElement).getPropertyValue(token).trim()||'13px':'13px';
 }
-function renderCharts(){const data=dashboardData(),months=dashboardBuckets().filter(bucket=>bucket.key<=dashboardDateKey(new Date()).slice(0,dashboardPeriod==='year'?7:10));const label=$('#dashboardPeriodLabel');if(label)label.textContent=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',...(dashboardPeriod==='month'?{month:'short'}:{}),year:'numeric'}).format(new Date());const enquiries=months.map(m=>data.students.filter(s=>dashboardDateKey(s.created_at).startsWith(m.key)).length),conversions=months.map(m=>data.leads.filter(l=>l.status==='Converted'&&dashboardDateKey(l.created_at).startsWith(m.key)).length);const total=data.leads.length,converted=data.leads.filter(l=>l.status==='Converted').length,closed=data.leads.filter(l=>l.status==='Lost').length,active=total-converted-closed,rate=total?Math.round(converted/total*100):0;
+function renderCharts(){renderDashboardYears();const data=dashboardData(),months=dashboardBuckets().filter(bucket=>bucket.key<=dashboardDateKey(new Date()).slice(0,dashboardPeriod==='year'?7:10));const label=$('#dashboardPeriodLabel');if(label)label.textContent=dashboardPeriodLabel();const enquiries=months.map(m=>data.students.filter(s=>dashboardDateKey(s.created_at).startsWith(m.key)).length),conversions=months.map(m=>data.leads.filter(l=>l.status==='Converted'&&dashboardDateKey(l.created_at).startsWith(m.key)).length);const total=data.leads.length,converted=data.leads.filter(l=>l.status==='Converted').length,closed=data.leads.filter(l=>l.status==='Lost').length,active=total-converted-closed,rate=total?Math.round(converted/total*100):0;
  $('#healthRate').textContent=`${rate}%`;
  $('#healthMessage').textContent=total?`${total} ${total===1?'enquiry':'enquiries'}`:'No enquiries yet';
- $('#conversionPeriod').textContent=dashboardPeriod==='year'?'This year':'This month';
+ $('#conversionPeriod').textContent=dashboardYear===null||String(dashboardYear)===dashboardDateKey(new Date()).slice(0,4)?(dashboardPeriod==='year'?'This year':'This month'):dashboardPeriodLabel();
  const bookedShare=total?converted/total*100:0,activeShare=total?active/total*100:0;
  const ring=$('#statusChart');ring.style.background=total?`conic-gradient(#487b63 0% ${bookedShare}%, #d4bc65 ${bookedShare}% ${bookedShare+activeShare}%, #e8eaec ${bookedShare+activeShare}% 100%)`:'#e8eaec';
  ring.setAttribute('aria-label',`${rate}% booking rate; ${converted} booked, ${active} active, ${closed} closed out of ${total} enquiries`);

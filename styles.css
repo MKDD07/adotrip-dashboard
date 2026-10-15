@@ -8437,3 +8437,6 @@ button, input, select, textarea { font-family: inherit; }
 .notification-list .notif-top-row .notif-action-link:hover, .notification-list .notif-dismiss-btn:hover { background: rgba(255, 255, 255, .8); color: var(--ink); }
 .notification-empty { padding: 38px 18px; }
 @media (max-width: 767px) { .notification-panel { width: calc(100vw - 24px); } }
+
+.dashboard-chart-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.dashboard-chart-controls .form-select { width: auto; min-width: 90px; }

@@ -91,8 +91,8 @@
                     <button class="btn btn-light" data-open-view="calendar">View today’s schedule <i data-lucide="arrow-right"></i></button>
                     <div class="hero-facts" id="dashboardHeroFacts"></div>
                                         <div class="dashboard-period-switch" id="dashboardPeriodSwitch" role="group" aria-label="Dashboard reporting period" data-period="month">
-                        <button type="button" data-dashboard-period="month" aria-pressed="true" title="Current month">Month</button>
-                        <button type="button" data-dashboard-period="year" aria-pressed="false" title="Current year">Year</button>
+                        <button type="button" data-dashboard-period="month" aria-pressed="true" title="Current month in the selected year">Month</button>
+                        <button type="button" data-dashboard-period="year" aria-pressed="false" title="Selected year">Year</button>
                     </div>
                 </div>
             </div>
@@ -102,7 +102,7 @@
                     <div class="panel panel-layout">
                         <div class="panel-head panel-head-layout">
                             <div><h3>Enquiries & bookings</h3>
-                            </div><span class="dashboard-period-label" id="dashboardPeriodLabel"></span>
+                            </div><div class="dashboard-chart-controls"><span class="dashboard-period-label" id="dashboardPeriodLabel"></span><label class="visually-hidden" for="dashboardYear">Reporting year</label><select id="dashboardYear" class="form-select form-select-sm" aria-label="Reporting year"></select></div>
                         </div>
                         <div id="leadChart"></div>
                     </div>
