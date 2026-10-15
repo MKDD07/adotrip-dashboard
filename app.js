@@ -57,8 +57,9 @@ function setDashboardLoadState(state){
  if($('#dashboardLoadingStatus'))$('#dashboardLoadingStatus').textContent=state==='loading'?'Loading dashboard…':state==='error'?'Dashboard could not load. Retry the connection.':'Dashboard loaded.';
  dashboardLoading=state!=='ready';
 }
-async function load(){if(dashboardLoading)setDashboardLoadState('loading');if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;if($('#dataNotice'))$('#dataNotice').hidden=true;await render();setDashboardLoadState('ready');if(signedInUser)await refreshNotifications().catch(()=>{});}
+async function load(){if(dashboardLoading)setDashboardLoadState('loading');if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;studentListReady=true;studentListError='';propertiesLoading=false;propertiesError=false;if($('#dataNotice'))$('#dataNotice').hidden=true;await render();setDashboardLoadState('ready');if(signedInUser)await refreshNotifications().catch(()=>{});}
 function showDataError(error){
+ if(typeof studentListReady!=='undefined'&&!studentListReady){studentListError=error.message;renderStudentList()}
  if(typeof dashboardLoading!=='undefined'&&dashboardLoading)setDashboardLoadState('error');
  if(propertiesLoading){propertiesLoading=false;propertiesError=true;renderProperties()}
  const text=$('#dataNoticeText'),notice=$('#dataNotice');
@@ -67,7 +68,7 @@ function showDataError(error){
  else console.error('CRM data unavailable:',error.message);
 }
 if($('#retryData'))$('#retryData').onclick=()=>load().catch(showDataError);
-function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderStudentArchive();const chart=renderCharts();icons();return chart}
+function render(){renderStudentList();renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderStudentArchive();const chart=renderCharts();icons();return chart}
 let dashboardPeriod='month';
 let dashboardYear=null;
 let studentDirectoryMode='pending';
@@ -274,7 +275,78 @@ function renderCharts(){renderDashboardYears();const data=dashboardData(),months
 function advanceStudent(id){openStudentProfile(id)}
 async function advanceLead(id){const lead=find('leads',id),flow=['New Lead','Contacted','Interested','Follow-up Required','Converted'],index=flow.indexOf(lead.status);if(index>=0&&index<flow.length-1)await moveLead(id,flow[index+1])}
 function shortlist(id){if(propertyPeople(id).some(person=>person.booked))return;bootstrap.Modal.getOrCreateInstance($('#leadModal')).show();setTimeout(()=>$('#leadForm [name=property_id]').value=id,100)}
-function showView(name){if(name==='pending')name='students';if(name==='students'||name==='finalized'){const mode=name==='finalized'?'finalized':'pending';if(studentDirectoryMode!==mode){studentDirectoryMode=mode;selectedStudentId=null;activeProfileTab='overview';$('#studentSearch').value='';$('#studentStatus').value='';}renderStudents();renderWorkspaceHeroes();}if($('#dashboardPeriodSwitch'))$('#dashboardPeriodSwitch').hidden=name!=='dashboard';$$('.view').forEach(x=>x.classList.remove('active'));$(`#${name==='finalized'?'students':name}View`).classList.add('active');$$('.nav-link[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const labels={dashboard:['Dashboard','Indian students, overseas apartments and arrivals.'],students:['Pending','Manage student enquiries awaiting finalization.'],finalized:['Finalized','Converted students and finalized bookings.'],properties:['Properties','Find and shortlist the perfect stay.'],leads:['Lead pipeline','Move opportunities toward booking.'],calendar:['Calendar','Calls, visits and reminders.'],payments:['Payments','Transactions and confirmed bookings.'],settings:['Settings','Database and integration configuration.']};$('#viewTitle').textContent=labels[name][0];$('#viewSubtitle').textContent=labels[name][1];$('#sidebar').classList.remove('open');if(name==='settings'&&signedInUser?.role==='admin')loadStudentArchive();if(name==='calendar')setTimeout(()=>calendar?.updateSize(),50)}
+let studentListPage=1,studentListReady=false,studentListError='',studentListReturn=false;
+const studentListFilterIds=['studentListYear','studentListMonth','studentListStatus','studentListPriority','studentListOwner','studentListCity','studentListCourse','studentListApproval'];
+const studentPriorityRank={High:3,Medium:2,Low:1,None:0};
+function studentListTime(value,sqlUtc=false){
+ if(!value)return NaN;let text=String(value).trim();
+ if(/^\d{4}-\d{2}-\d{2}$/.test(text))text+='T00:00:00+05:30';
+ else if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(?::\d{2})?$/.test(text))text=text.replace(' ','T')+(sqlUtc?'Z':'+05:30');
+ else if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(text))text+='+05:30';
+ return Date.parse(text);
+}
+function studentListRecords(state=data){
+ return state.students.map(student=>{
+  const profile=profileInfo(student)||{},leads=state.leads.filter(l=>l.student_id===student.id),tasks=state.followups.filter(f=>f.student_id===student.id),open=tasks.filter(f=>f.status!=='Done').sort((a,b)=>(studentListTime(a.starts_at)||0)-(studentListTime(b.starts_at)||0));
+  const priority=open.reduce((value,task)=>(studentPriorityRank[task.priority]||0)>studentPriorityRank[value]?task.priority:value,'None');
+  const payments=state.payments.filter(p=>p.student_id===student.id),properties=[...new Set([...leads.filter(l=>l.status!=='Lost').map(l=>l.property_id),...payments.filter(p=>p.status==='Successful'&&p.booking==='Confirmed').map(p=>p.property_id)])].map(id=>state.properties.find(p=>p.id===id)).filter(Boolean),drafts=(state.status_requests||[]).filter(r=>r.student_id===student.id&&r.state==='Pending');
+  const received=payments.filter(p=>p.status==='Successful').reduce((sum,p)=>sum+Number(p.amount||0),0),pending=payments.filter(p=>p.status==='Pending').reduce((sum,p)=>sum+Number(p.amount||0),0);
+  const key=dashboardDateKey(new Date(studentListTime(student.created_at,true)));
+  const search=[studentReference(student),...Object.values(student),...Object.values(profile),String(student.mobile||'').replace(/\D/g,''),String(profile.guardian_mobile||'').replace(/\D/g,''),...properties.map(p=>`${p.name} ${p.location}`),priority,...drafts.map(d=>d.proposed_status)].join(' ').toLowerCase();
+  return {student,profile,properties,tasks,open,priority,payments,received,pending,drafts,key,search};
+ });
+}
+function filterStudentList(records,filters={}){
+ const query=String(filters.search||'').trim().toLowerCase();
+ return records.filter(row=>(!query||row.search.includes(query))&&(!filters.year||row.key.slice(0,4)===filters.year)&&(!filters.month||row.key.slice(5,7)===filters.month)&&(!filters.status||row.student.status===filters.status)&&(!filters.priority||row.priority===filters.priority)&&(!filters.owner||row.student.agent===filters.owner)&&(!filters.city||row.student.city===filters.city)&&(!filters.course||row.student.course===filters.course)&&(!filters.approval||(filters.approval==='pending'?row.drafts.length>0:row.drafts.length===0))).sort((a,b)=>{
+  const mode=filters.sort||'newest',tie=String(a.student.id).localeCompare(String(b.student.id));
+  if(mode==='name')return String(a.student.name).localeCompare(String(b.student.name))||tie;
+  if(mode==='priority')return studentPriorityRank[b.priority]-studentPriorityRank[a.priority]||tie;
+  if(mode==='budget')return Number(b.student.budget||0)-Number(a.student.budget||0)||tie;
+  if(mode==='followup'){const first=studentListTime(a.open[0]?.starts_at),second=studentListTime(b.open[0]?.starts_at);return (Number.isFinite(first)?first:Infinity)-(Number.isFinite(second)?second:Infinity)||tie}
+  const result=(studentListTime(a.student.created_at,true)||0)-(studentListTime(b.student.created_at,true)||0);
+  return (mode==='oldest'?result:-result)||tie;
+ });
+}
+function studentListOptions(selector,values,label){
+ const select=$(selector);if(!select)return;
+ const selected=select.value||'',options=[...new Set(values.filter(Boolean))];if(selected&&!options.includes(selected))options.push(selected);
+ select.innerHTML=`<option value="">${label}</option>`+options.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join('');select.value=selected;
+}
+function renderStudentList(){
+ if(!$('#studentListRows'))return;
+ $('#allStudentsNavCount').textContent=data.students.length;
+ if(!studentListReady){$('#studentListRows').innerHTML=`<tr><td colspan="10" class="empty-state"><div class="student-list-empty">${studentListError?esc(studentListError):'Loading students…'}</div></td></tr>`;$('#studentListRows').setAttribute('aria-busy',String(!studentListError));return}
+ const records=studentListRecords(),year=dashboardDateKey(new Date()).slice(0,4);
+ studentListOptions('#studentListYear',[...new Set([year,...records.map(row=>row.key.slice(0,4)).filter(Boolean)])].sort((a,b)=>Number(b)-Number(a)),'All years');
+ for(const [id,field,label] of [['Owner','agent','All owners'],['City','city','All cities'],['Course','course','All courses']])studentListOptions('#studentList'+id,[...new Set(data.students.map(s=>s[field]).filter(Boolean))].sort(),label);
+ const filters={search:$('#studentListSearch').value||'',year:$('#studentListYear').value||'',month:$('#studentListMonth').value||'',status:$('#studentListStatus').value||'',priority:$('#studentListPriority').value||'',owner:$('#studentListOwner').value||'',city:$('#studentListCity').value||'',course:$('#studentListCourse').value||'',approval:$('#studentListApproval').value||'',sort:$('#studentListSort').value||'newest'};
+ const rows=filterStudentList(records,filters),pageSize=Number($('#studentListPageSize').value)||25,pages=Math.max(1,Math.ceil(rows.length/pageSize));studentListPage=Math.max(1,Math.min(studentListPage,pages));
+ const first=(studentListPage-1)*pageSize,visible=rows.slice(first,first+pageSize),text=value=>value?esc(value):'—';
+ $('#studentListSummary').innerHTML=`<span><strong>${rows.length}</strong> matching students <small>of ${records.length}</small></span><span>${rows.filter(r=>r.student.status==='Converted').length} finalized</span><span>${rows.filter(r=>r.priority==='High').length} high priority</span><span>${rows.filter(r=>r.drafts.length).length} awaiting status approval</span>`;
+ $('#studentListRows').setAttribute('aria-busy','false');
+ $('#studentListRows').innerHTML=visible.map(row=>{
+  const {student:s,profile:p}=row,next=row.open[0],date=row.key?new Date(`${row.key}T12:00:00+05:30`).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',year:'numeric'}):'Date unavailable';
+  return `<tr data-directory-row="${esc(s.id)}"><td><button type="button" class="student-list-person" data-directory-open="${esc(s.id)}" aria-label="Open Overview for ${esc(s.name)}">${personImage(s)}<span><strong>${esc(s.name)}</strong><span class="student-reference">${esc(studentReference(s))}</span><small>${text(p.nationality)}${p.gender?' · '+esc(p.gender):''}</small></span></button></td><td title="${esc([s.mobile,s.email,p.guardian_name,p.guardian_mobile].filter(Boolean).join(' · '))}"><span>${text(s.mobile)}</span><small>${text(s.email)}</small>${p.guardian_name?`<small>Guardian: ${esc(p.guardian_name)}${p.guardian_mobile?' · '+esc(p.guardian_mobile):''}</small>`:''}</td><td title="${esc([s.course,p.college,p.study_year,s.city,p.destination_country,p.preferred_area].filter(Boolean).join(' · '))}"><strong>${text(s.course)}</strong><small>${text(p.college)}${p.study_year?' · '+esc(p.study_year):''}</small><span>${text(s.city)}${p.destination_country?' · '+esc(p.destination_country):''}</span><small>${text(p.preferred_area)}</small></td><td title="${esc([...row.properties.map(property=>property.name+' · '+(property.location||'')),p.room_preference,p.stay_duration].filter(Boolean).join(' · '))}">${row.properties.length?row.properties.map(property=>`<strong>${esc(property.name)}</strong><small>${esc(property.location||'')} · ${money(property.price)} / mo</small>`).join(''):'<span class="muted-label">Not assigned</span>'}<small>${[p.room_preference,p.stay_duration].filter(Boolean).map(esc).join(' · ')}</small>${p.move_in_date?`<small>Move-in: ${esc(p.move_in_date)}</small>`:''}</td><td><strong>${money(s.budget)} / mo</strong><small>Monthly budget</small><span>Received ${money(row.received)}</span><small>Pending ${money(row.pending)}</small></td><td>${statusBadge(s.status)}${row.drafts.map(draft=>`<small class="student-list-draft">Draft: ${esc(draft.proposed_status)}<br>${esc(draft.requested_by_name)}</small>`).join('')}</td><td><span class="student-list-priority priority-${row.priority.toLowerCase()}">${row.priority==='None'?'No open tasks':row.priority}</span>${next?`<strong>${esc(next.purpose||'Follow-up')}</strong><small>${esc(Number.isFinite(studentListTime(next.starts_at))?new Date(studentListTime(next.starts_at)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Time not set')}</small>`:''}<small>${row.open.length} open / ${row.tasks.length} total follow-ups</small></td><td><strong>${text(s.agent)}</strong><small>${text(p.source)}</small>${p.hometown?`<small>Hometown: ${esc(p.hometown)}</small>`:''}</td><td><span>${date}</span><small>${row.key?'Year '+row.key.slice(0,4):''}</small></td><td><span class="student-list-notes" title="${esc(s.notes||'')}">${text(s.notes)}</span></td></tr>`;
+ }).join('')||'<tr><td colspan="10" class="empty-state"><div class="student-list-empty">No students match these filters. Reset filters to see the full list.</div></td></tr>';
+ $('#studentListRange').textContent=rows.length?`Showing ${first+1}–${Math.min(first+pageSize,rows.length)} of ${rows.length} students`:'0 matching students';
+ $('#studentListPageLabel').textContent=`${studentListPage} / ${pages}`;$('#studentListPrevious').disabled=studentListPage===1;$('#studentListNext').disabled=studentListPage>=pages;icons();
+}
+function openStudentListOverview(id){
+ if(!data.students.some(student=>student.id===id))return;
+ studentListReturn=true;activeProfileTab='overview';openStudentProfile(id);$('#studentProfile')?.scrollIntoView?.({block:'start',behavior:'smooth'});
+}
+function resetStudentListFilters(){
+ for(const id of ['studentListSearch',...studentListFilterIds])$('#'+id).value='';$('#studentListSort').value='newest';studentListPage=1;renderStudentList();
+}
+if($('#studentListSearch'))$('#studentListSearch').oninput=()=>{studentListPage=1;renderStudentList()};
+for(const id of [...studentListFilterIds,'studentListSort','studentListPageSize'])if($('#'+id))$('#'+id).onchange=()=>{studentListPage=1;renderStudentList()};
+if($('#resetStudentListFilters'))$('#resetStudentListFilters').onclick=resetStudentListFilters;
+if($('#studentListPrevious'))$('#studentListPrevious').onclick=()=>{studentListPage--;renderStudentList()};
+if($('#studentListNext'))$('#studentListNext').onclick=()=>{studentListPage++;renderStudentList()};
+if($('#studentListRows'))$('#studentListRows').addEventListener('click',event=>{const row=event.target.closest('[data-directory-row]');if(row)openStudentListOverview(row.dataset.directoryRow)});
+if($('#returnToStudentList'))$('#returnToStudentList').onclick=()=>{studentListReturn=false;showView('directory')};
+function showView(name){if(name==='directory')renderStudentList();if($('#returnToStudentList'))$('#returnToStudentList').hidden=!(studentListReturn&&(name==='students'||name==='finalized'));if(name==='pending')name='students';if(name==='students'||name==='finalized'){const mode=name==='finalized'?'finalized':'pending';if(studentDirectoryMode!==mode){studentDirectoryMode=mode;selectedStudentId=null;activeProfileTab='overview';$('#studentSearch').value='';$('#studentStatus').value='';}renderStudents();renderWorkspaceHeroes();}if($('#dashboardPeriodSwitch'))$('#dashboardPeriodSwitch').hidden=name!=='dashboard';$$('.view').forEach(x=>x.classList.remove('active'));$(`#${name==='finalized'?'students':name}View`).classList.add('active');$$('.nav-link[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const labels={directory:['Students','Browse and filter every student enquiry.'],dashboard:['Dashboard','Indian students, overseas apartments and arrivals.'],students:['Pending','Manage student enquiries awaiting finalization.'],finalized:['Finalized','Converted students and finalized bookings.'],properties:['Properties','Find and shortlist the perfect stay.'],leads:['Lead pipeline','Move opportunities toward booking.'],calendar:['Calendar','Calls, visits and reminders.'],payments:['Payments','Transactions and confirmed bookings.'],settings:['Settings','Database and integration configuration.']};$('#viewTitle').textContent=labels[name][0];$('#viewSubtitle').textContent=labels[name][1];$('#sidebar').classList.remove('open');if(name==='settings'&&signedInUser?.role==='admin')loadStudentArchive();if(name==='calendar')setTimeout(()=>calendar?.updateSize(),50)}
 function bindForm(id,route){$(id).addEventListener('submit',async event=>{
  event.preventDefault();const button=event.submitter; if(button)button.disabled=true;
  try{
@@ -654,7 +726,7 @@ async function refreshWorkspace(){
   const [stateResult]=await Promise.allSettled([api('/api/state'),refreshNotifications(),refreshTeam()]);
   if(stateResult.status==='rejected')throw stateResult.reason;const state=stateResult.value;
   if(!['students','properties','leads','followups','payments'].every(key=>Array.isArray(state[key])))throw Error('Invalid CRM data');
-  const changed=JSON.stringify(state)!==JSON.stringify(data);data=state;
+  const changed=JSON.stringify(state)!==JSON.stringify(data);data=state;studentListReady=true;studentListError='';
   const editing=stagePaymentDraft||stagePaymentBusy||document.activeElement?.closest?.('form')||$('#profileBody')?.querySelector?.('details[open] form')||$('.modal.show');
   pendingWorkspaceRender ||= changed;
   if(pendingWorkspaceRender&&!editing){render();pendingWorkspaceRender=false}else{
@@ -902,7 +974,7 @@ async function startWorkspace(){
    headerDate.textContent=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date());
   }catch(_){headerDate.textContent='Wed, 14 Oct 2026'}
  }
- await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();if(globalThis.location)ensureProfileExchangeRates();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','pending','finalized','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
+ await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();if(globalThis.location)ensureProfileExchangeRates();const view=globalThis.location?.hash?.slice(1);if(['dashboard','directory','students','pending','finalized','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
 }
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#globalSearch').focus()}});
 if(!hostedStaticPage&&(typeof staticPreview==='undefined'||!staticPreview)){
