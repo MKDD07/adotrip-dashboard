@@ -117,6 +117,15 @@
                         <button type="button" class="pipeline-link" data-open-view="leads"><span>View pipeline</span><i data-lucide="arrow-right"></i></button>
                     </div>
                 </div>
+                <div class="country-column">
+                    <div class="panel panel-layout dashboard-loading-panel country-students-card" data-skeleton-panel="countries" aria-busy="true">
+                        <div class="dashboard-panel-skeleton" aria-hidden="true"><div class="dashboard-skeleton-head"><span class="dashboard-skeleton-line skeleton-heading"></span></div><div class="dashboard-skeleton-row"><span class="dashboard-skeleton-line"></span><span class="dashboard-skeleton-line skeleton-short"></span></div><div class="dashboard-skeleton-row"><span class="dashboard-skeleton-line"></span><span class="dashboard-skeleton-line skeleton-short"></span></div><div class="dashboard-skeleton-row"><span class="dashboard-skeleton-line"></span><span class="dashboard-skeleton-line skeleton-short"></span></div><div class="dashboard-skeleton-row"><span class="dashboard-skeleton-line"></span><span class="dashboard-skeleton-line skeleton-short"></span></div><div class="dashboard-skeleton-row"><span class="dashboard-skeleton-line"></span><span class="dashboard-skeleton-line skeleton-short"></span></div></div>
+                        <p class="dashboard-panel-error" role="status" hidden>Unable to load this panel. Use Retry connection above.</p>
+                        <div class="panel-head"><h3>Top 5 countries</h3><span class="conversion-period" id="countryStudentPeriod"></span></div>
+                        <div id="countryStudentRows" aria-label="Student destination counts"></div>
+                        <p id="countryStudentTotal" class="country-student-total"></p>
+                    </div>
+                </div>
             </div>
             <div class="dashboard-panels">
                 <div class="enquiries-column">
@@ -159,6 +168,7 @@
                     <label for="studentListStatus">Approved status<select id="studentListStatus" class="form-select"><option value="">All statuses</option><option>New Lead</option><option>Contacted</option><option>Interested</option><option>Follow-up Required</option><option>Converted</option><option>Lost</option></select></label>
                     <label for="studentListPriority">Highest open priority<select id="studentListPriority" class="form-select"><option value="">All priorities</option><option>High</option><option>Medium</option><option>Low</option><option value="None">No open follow-ups</option></select></label>
                     <label for="studentListOwner">Assigned owner<select id="studentListOwner" class="form-select"><option value="">All owners</option></select></label>
+                    <label for="studentListCountry">Destination country<select id="studentListCountry" class="form-select"><option value="">All countries</option></select></label>
                     <label for="studentListCity">Destination city<select id="studentListCity" class="form-select"><option value="">All cities</option></select></label>
                     <label for="studentListCourse">Course<select id="studentListCourse" class="form-select"><option value="">All courses</option></select></label>
                     <label for="studentListApproval">Status approval<select id="studentListApproval" class="form-select"><option value="">All students</option><option value="pending">Has a status draft</option><option value="clear">No pending draft</option></select></label>
@@ -230,7 +240,7 @@
             <div class="property-search-toolbar">
                 <div class="filter-search"><i data-lucide="search"></i><input id="propertySearch" class="form-control" placeholder="Search city, property or amenities" aria-label="Search properties"></div>
             </div>
-            <div class="property-filters"><button class="filter-chip active" data-type="">All stays</button><button class="filter-chip" data-type="Single">Single</button><button class="filter-chip" data-type="Twin Sharing">Twin sharing</button><button class="filter-chip" data-type="Studio">Studio</button></div>
+            <div class="property-filters"><label class="property-country-filter" for="propertyCountry">Country<select id="propertyCountry" class="form-select"><option value="">All countries</option></select></label><button class="filter-chip active" data-type="">All stays</button><button class="filter-chip" data-type="Single">Single</button><button class="filter-chip" data-type="Twin Sharing">Twin sharing</button><button class="filter-chip" data-type="Studio">Studio</button></div>
             <div class="content-grid" id="propertyGrid"></div>
         </section>
         <section class="view" id="leadsView">

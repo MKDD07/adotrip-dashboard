@@ -8739,3 +8739,46 @@ button, input, select, textarea { font-family: inherit; }
 .student-list-table td:nth-child(3) > span,
 .student-list-table td:nth-child(4) > strong,
 .student-list-table td:nth-child(4) > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Database-driven destinations and assigned accommodation imagery. */
+.payment-assigned-property { flex-direction: row; align-items: center; gap: 16px; }
+.payment-property-photo { width: 112px; height: 90px; flex-shrink: 0; overflow: hidden; border-radius: 8px; background: #e8ebef; }
+.payment-property-photo img { width: 100%; height: 100%; object-fit: cover; }
+.payment-property-copy { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.student-list-property { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+.student-list-property img { width: 44px; height: 44px; border-radius: 7px; object-fit: cover; flex-shrink: 0; background: #eee; }
+.student-list-property div { min-width: 0; }
+.student-list-property strong, .student-list-property small { display: block; white-space: normal; }
+.property-filters { flex-wrap: wrap; }
+.property-country-filter { display: flex; align-items: center; gap: 10px; font-size: var(--text-caption); color: #68717f; margin-right: 8px; }
+.property-country-filter select { width: 190px; }
+#dashboardView .dashboard-panels-spaced { grid-template-columns: minmax(0,1.45fr) minmax(0,1fr) minmax(0,.9fr); }
+.country-column { min-width: 0; }
+.country-students-card { display: flex; flex-direction: column; }
+.country-students-card .panel-head { display: flex; align-items: flex-start; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.country-student-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+.country-rank { color: #a0a7b0; font-size: 11px; width: 13px; }
+.country-student-row > div { flex: 1; min-width: 0; }
+.country-student-row strong { font-size: 12px; font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.country-student-row b { font-size: 13px; font-weight: 600; color: #44576d; }
+.country-count-track { display: block; height: 4px; border-radius: 4px; background: #f0f2f5; margin-top: 6px; overflow: hidden; }
+.country-count-track > span { display: block; height: 100%; background: #8da6bd; border-radius: inherit; }
+.country-student-total { font-size: 10px; color: #87909c; margin: auto 0 0; padding-top: 8px; }
+@media (min-width:1200px) { #dashboardView .lead-health-card .health-overview { flex-direction: column; gap: 12px; padding: 6px 0; } #dashboardView .lead-health-card .conversion-ring { width: 112px; height: 112px; flex-basis: 112px; } #dashboardView .lead-health-card .conversion-breakdown { width: 100%; } }
+@media (max-width:1199px) { #dashboardView .dashboard-panels-spaced { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } #dashboardView .dashboard-panels-spaced .performance-column { grid-column: 1 / -1; } }
+@media (max-width:767px) { #dashboardView .dashboard-panels-spaced { grid-template-columns: minmax(0,1fr); } .payment-property-photo { width: 80px; height: 80px; } }
+#dashboardView .country-students-card .panel-head { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 8px; }
+#dashboardView .country-students-card .conversion-period { margin-left: 0; }
+@media (min-width:1200px) {
+ #dashboardView .lead-health-card #statusChart.conversion-ring { flex: 0 0 94px; min-width: 94px; width: 94px; height: 94px; }
+ #dashboardView .lead-health-card .conversion-breakdown { flex: 0 0 auto; width: 100%; }
+ #dashboardView .lead-health-card .conversion-breakdown > p { margin-bottom: 7px; }
+ #dashboardView .lead-health-card .conversion-breakdown .stage-list { gap: 5px; }
+ #dashboardView .lead-health-card .health-overview { gap: 8px; }
+}
+@media (min-width:1200px) {
+ #dashboardView .lead-health-card .health-overview { padding: 0; gap: 5px; }
+ #dashboardView .lead-health-card #statusChart.conversion-ring { flex-basis: 84px; min-width: 84px; width: 84px; height: 84px; }
+ #dashboardView .lead-health-card .conversion-ring-center strong { font-size: 25px; }
+ #dashboardView .lead-health-card .conversion-ring-center span { font-size: 10px; }
+}

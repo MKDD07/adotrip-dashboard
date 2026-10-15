@@ -46,3 +46,15 @@ test('clicking a list row opens Overview in the correct pending/finalized worksp
  assert.equal(el('#profileTitle').textContent,'Kabir Khan');assert.equal(el('#viewTitle').textContent,'Finalized');assert.match(el('#profileBody').innerHTML,/id="student-tab-overview" class="student-profile-tab active"/);assert.equal(el('#returnToStudentList').hidden,false);
  el('#returnToStudentList').onclick();assert.equal(el('#viewTitle').textContent,'Students');assert.equal(el('#studentListYear').value,'2025');assert.equal(el('#studentListMonth').value,'09');assert.equal(el('#returnToStudentList').hidden,true);
 });
+test('country counts and both filters use assigned property destinations without counting a student twice',()=>{
+ const {run,json,el}=setup();
+ run("data.properties[0].location='Bloomsbury, London, United Kingdom';data.students[0].profile_json=JSON.stringify({destination_country:'Germany'});data.students[1].profile_json=JSON.stringify({destination_country:'Canada'});data.leads.push({...data.leads[0],id:'L2'})");
+ assert.equal(json('studentCountry(data.students[0])'),'United Kingdom');
+ assert.deepEqual(json("filterStudentList(studentListRecords(),{country:'Canada'}).map(r=>r.student.id)"),['B']);
+ assert.deepEqual(json('countryStudentCounts(data.students)'),{rows:[{country:'Canada',count:1},{country:'United Kingdom',count:1}],unspecified:1});
+ run('renderStudentList()');assert.match(el('#studentListCountry').innerHTML,/United Kingdom/);assert.match(el('#studentListRows').innerHTML,/student-list-property/);
+ el('#propertyCountry').value='Canada';run('renderProperties()');assert.match(el('#propertyGrid').innerHTML,/No properties found/);
+ el('#propertyCountry').value='United Kingdom';run('renderProperties()');assert.match(el('#propertyGrid').innerHTML,/Bloomsbury Studio/);
+ run("data.students[1].profile_json=JSON.stringify({destination_country:'united kingdom'})");
+ assert.equal(json('countryStudentCounts(data.students).rows[0].count'),2);
+});

@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {createExchangeRateService} from '../worker/exchange-rates.mjs';
 function helpers(){
  const source=readFileSync('app.js','utf8');
- const context=vm.createContext({money:n=>'₹'+Number(n||0).toLocaleString('en-IN'),esc:s=>String(s??''),Date,console});
+ const context=vm.createContext({money:n=>'₹'+Number(n||0).toLocaleString('en-IN'),esc:s=>String(s??''),Date,console,propertyPhoto:p=>`<img alt="${p.name}">`});
  vm.runInContext(source.slice(source.indexOf("const profileCurrencies="),source.indexOf('function renderStudentProfile(){')),context);
  return code=>JSON.parse(vm.runInContext(`JSON.stringify(${code})`,context));
 }
