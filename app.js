@@ -47,8 +47,18 @@ const api=async(url,options={})=>{let r;try{r=await fetch(API_ORIGIN+url,{cache:
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN'),esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])),find=(type,id)=>data[type].find(x=>x.id===id)||{};
 function statusBadge(value){const c=['Converted','Successful','Confirmed','Done'].includes(value)?'green':['Interested','Pending','Follow-up Required','On hold'].includes(value)?'amber':['Lost','Failed','Refunded'].includes(value)?'red':['Contacted','High'].includes(value)?'blue':'gray';return `<span class="status ${c}">${esc(value)}</span>`}
 function icons(){window.lucide?.createIcons();hydrateImages()};function notify(message){$('#toastText').textContent=message;icons();if(window.bootstrap)bootstrap.Toast.getOrCreateInstance($('#appToast'),{delay:2500}).show();else{$('#appToast').classList.add('show');setTimeout(()=>$('#appToast').classList.remove('show'),2500)}};function closeModal(id){bootstrap.Modal.getInstance($(id))?.hide()}
-async function load(){if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;if($('#dataNotice'))$('#dataNotice').hidden=true;render();if(signedInUser)await refreshNotifications().catch(()=>{});}
+let dashboardLoading=true;
+function setDashboardLoadState(state){
+ const dashboard=$('#dashboardView');if(dashboard?.dataset)dashboard.dataset.loadState=state;
+ for(const panel of $$('[data-skeleton-panel]'))panel.setAttribute('aria-busy',String(state==='loading'));
+ for(const message of $$('.dashboard-panel-error'))message.hidden=state!=='error';
+ if($('#statCards'))$('#statCards').setAttribute('aria-busy',String(state==='loading'));
+ if($('#dashboardLoadingStatus'))$('#dashboardLoadingStatus').textContent=state==='loading'?'Loading dashboard…':state==='error'?'Dashboard could not load. Retry the connection.':'Dashboard loaded.';
+ dashboardLoading=state!=='ready';
+}
+async function load(){if(dashboardLoading)setDashboardLoadState('loading');if(propertiesLoading)renderProperties();const state=await api('/api/state');for(const key of ['students','properties','leads','followups','payments']){if(!Array.isArray(state[key]))throw Error('The CRM server returned invalid data. Check the Cloudflare D1 connection and retry.')}data=state;propertiesLoading=false;propertiesError=false;if($('#dataNotice'))$('#dataNotice').hidden=true;await render();setDashboardLoadState('ready');if(signedInUser)await refreshNotifications().catch(()=>{});}
 function showDataError(error){
+ if(typeof dashboardLoading!=='undefined'&&dashboardLoading)setDashboardLoadState('error');
  if(propertiesLoading){propertiesLoading=false;propertiesError=true;renderProperties()}
  const text=$('#dataNoticeText'),notice=$('#dataNotice');
  if(text)text.textContent=error.message;
@@ -56,7 +66,7 @@ function showDataError(error){
  else console.error('CRM data unavailable:',error.message);
 }
 if($('#retryData'))$('#retryData').onclick=()=>load().catch(showDataError);
-function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderCharts();icons()}
+function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();const chart=renderCharts();icons();return chart}
 let dashboardPeriod='month';
 let dashboardYear=null;
 let studentDirectoryMode='pending';
@@ -259,7 +269,7 @@ function renderCharts(){renderDashboardYears();const data=dashboardData(),months
  grid:{borderColor:'#f0f1f3',strokeDashArray:3,padding:{left:0,right:8,top:0,bottom:0}},
  legend:{position:'top',horizontalAlign:'left',fontSize:uiFontSize('--text-caption'),fontWeight:400,labels:{colors:'#73777f'},markers:{width:7,height:7},itemMargin:{horizontal:12,vertical:6}},
  tooltip:{shared:true,intersect:false,y:{formatter:value=>String(value)}}
- });leadChart.render();}
+ });return leadChart.render();}
 function advanceStudent(id){openStudentProfile(id)}
 async function advanceLead(id){const lead=find('leads',id),flow=['New Lead','Contacted','Interested','Follow-up Required','Converted'],index=flow.indexOf(lead.status);if(index>=0&&index<flow.length-1)await moveLead(id,flow[index+1])}
 function shortlist(id){if(propertyPeople(id).some(person=>person.booked))return;bootstrap.Modal.getOrCreateInstance($('#leadModal')).show();setTimeout(()=>$('#leadForm [name=property_id]').value=id,100)}
