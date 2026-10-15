@@ -3368,7 +3368,7 @@ body {
 #profileStatusForm {
     display: flex;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+    align-items: flex-end;
     gap: 12px
 }
 
@@ -8653,7 +8653,7 @@ button, input, select, textarea { font-family: inherit; }
 #studentProfileHeader[data-status="Follow-up Required"] { background: linear-gradient(115deg,#fff0e5 0%,#fffaf6 60%,#fff 100%); }
 #studentProfileHeader[data-status="Converted"] { background: linear-gradient(115deg,#e4f4e9 0%,#f5fbf7 60%,#fff 100%); }
 #studentProfileHeader[data-status="Lost"] { background: linear-gradient(115deg,#f5e9ed 0%,#fcf8fa 60%,#fff 100%); }
-.student-status-workflow { margin: 0 0 20px; padding: 18px; border: 1px solid #e4e8ee; border-radius: 12px; background: #fafbfd; }
+.student-status-workflow { margin: 20px 0; padding: 18px; border: 1px solid #e4e8ee; border-radius: 12px; background: #fafbfd; }
 .student-status-current { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .student-status-current small { flex-basis: 100%; color: #85909d; font-size: var(--text-caption); line-height: 1.6; }
 .student-status-form { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
