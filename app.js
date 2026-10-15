@@ -560,6 +560,40 @@ async function reviewStatusDraft(id,decision){
   await load();if(viewing&&data.students.some(s=>s.id===request.student_id))openStudentProfile(request.student_id);await refreshNotifications();notify(decision==='approve'?'Draft approved. Status finalized.':'Status draft rejected.');
  }catch(error){notify(error.message)}finally{statusDecisions.delete(id);renderNotifications();if(selectedStudentId&&!stagePaymentDraft)renderStudentProfile()}
 }
+const defaultDocumentTypes=[{id:'identity',label:'Passport / photo ID',required:true},{id:'admission',label:'Admission / enrolment proof',required:true},{id:'photo',label:'Student photo',required:true},{id:'visa',label:'Visa / residence permit',required:false},{id:'address',label:'Address proof',required:false},{id:'financial',label:'Financial proof',required:false},{id:'guarantor',label:'Guarantor documents',required:false}];
+let studentDocumentBusy=false,studentDocumentError='';
+function studentDocumentChecklist(student,state=data){
+ return (state.document_types||defaultDocumentTypes).map(type=>{
+  const requirement=(state.document_requirements||[]).find(row=>row.student_id===student.id&&row.document_type===type.id);
+  const docs=(state.documents||[]).filter(doc=>doc.student_id===student.id&&doc.document_type===type.id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
+  const approved=docs.find(doc=>doc.state==='Approved'),pending=docs.find(doc=>doc.state==='Pending'),latest=pending||approved||docs.find(doc=>doc.state==='Rejected');
+  return {...type,required:requirement?Boolean(requirement.required):type.required,approved,pending,latest};
+ });
+}
+function studentDocumentAttention(student){const list=studentDocumentChecklist(student);return {missing:list.filter(row=>row.required&&!row.approved).length,pending:list.filter(row=>row.pending).length}}
+function documentTabIndicator(student){const {missing,pending}=studentDocumentAttention(student);return missing||pending?`<span class="document-tab-dot ${missing?'':'review'}" role="img" aria-label="${missing} required documents outstanding, ${pending} awaiting approval" title="${missing} required documents outstanding · ${pending} awaiting approval"></span>`:''}
+function studentDocumentsMarkup(student){
+ const list=studentDocumentChecklist(student),required=list.filter(row=>row.required),complete=required.filter(row=>row.approved).length,admin=signedInUser?.role==='admin',disabled=studentDocumentBusy?'disabled':'';
+ return `<section class="profile-section student-documents" aria-labelledby="studentDocumentsHeading" aria-busy="${studentDocumentBusy}"><div class="student-documents-heading"><div><h3 id="studentDocumentsHeading">Documents <span>${complete}/${required.length}</span></h3><small>${admin?'Review and finalize':'Uploads are submitted for admin review'} · PDF or images · 10 MB</small></div><span class="document-completion ${complete===required.length?'complete':''}">${complete===required.length?'Complete':required.length-complete+' outstanding'}</span></div>
+ <div class="document-checklist">${list.map(row=>{
+  const doc=row.latest,state=row.pending?'In review':row.approved?'Approved':doc?.state==='Rejected'?'Changes needed':'Missing';
+  return `<article class="document-checklist-row ${row.approved?'document-approved':''}"><div class="document-check-icon"><i data-lucide="${row.approved?'circle-check':row.pending?'clock-3':'circle'}"></i></div><div class="document-check-content"><div class="document-check-title"><strong>${esc(row.label)}</strong><span class="document-state state-${row.pending?'pending':row.approved?'approved':doc?.state==='Rejected'?'rejected':'missing'}">${!row.required&&!doc?'Optional':state}</span></div><div class="document-file-meta">${doc?`<a href="/api/student-documents/${esc(doc.id)}/file" title="Download ${esc(doc.filename)}">${esc(doc.filename)}</a><span>${Math.max(1,Math.round(doc.size_bytes/1024))} KB · ${esc(doc.uploaded_by_name)}</span>`:`<span>${row.required?'Required':'If applicable'}</span>`}</div>${row.pending&&row.approved?`<a class="document-approved-version" href="/api/student-documents/${esc(row.approved.id)}/file">Current approved file</a>`:''}${doc?.state==='Rejected'&&!row.approved?`<p class="document-review-note">${esc(doc.review_note||'Upload a corrected file')}</p>`:''}${admin?`<label class="document-required-toggle"><input type="checkbox" data-document-required="${esc(row.id)}" ${row.required?'checked':''} ${disabled}> Required</label>`:''}${admin&&row.pending?`<form class="document-review-form" data-document-review="${esc(row.pending.id)}"><input class="form-control" name="note" maxlength="300" placeholder="Reason if changes needed" aria-label="Review note for ${esc(row.label)}" ${disabled}><button type="submit" name="decision" value="approve" formnovalidate class="document-approve" ${disabled}>Approve</button><button type="submit" name="decision" value="reject" class="document-reject" ${disabled}>Request changes</button></form>`:''}</div><label class="document-upload ${studentDocumentBusy?'busy':''}"><i data-lucide="upload"></i><span>${doc?'Replace':admin?'Upload':'Submit draft'}</span><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" data-document-upload="${esc(row.id)}" aria-label="${doc?'Replace':'Upload'} ${esc(row.label)}" ${disabled}></label></article>`;
+ }).join('')}</div><p class="document-feedback" id="studentDocumentFeedback" role="status">${studentDocumentBusy?'Saving…':esc(studentDocumentError)}</p></section>`;
+}
+function updateDocumentUI(){
+ const student=data.students.find(row=>row.id===selectedStudentId);if(!student)return;
+ const holder=$('#studentDocuments');if(holder)holder.innerHTML=studentDocumentsMarkup(student);
+ const tab=$('#student-tab-details');if(tab){tab.querySelector?.('.document-tab-dot')?.remove();tab.insertAdjacentHTML?.('beforeend',documentTabIndicator(student))}icons();
+}
+async function performDocumentAction(action){
+ if(studentDocumentBusy)return;studentDocumentBusy=true;studentDocumentError='';const studentId=selectedStudentId;updateDocumentUI();
+ try{
+  await action();
+  try{const state=await api('/api/state');data=state}catch{throw Error('Saved. Refresh the page to load the updated checklist.')}
+  refreshNotifications().catch(()=>{});
+ }catch(error){if(selectedStudentId===studentId)studentDocumentError=error.message}
+ finally{studentDocumentBusy=false;updateDocumentUI()}
+}
 function renderStudentProfile(){
  const student=find('students',selectedStudentId);$('#deleteStudentBtn').hidden=!student.id||signedInUser?.role!=='admin';
  if(!student.id){$('#studentProfileHeader')?.setAttribute('data-status','');$('#profileTitle').textContent='Select a student';$('#profileSubtitle').textContent='';$('#profilePortrait').innerHTML='';$('#profileProgress').hidden=true;$('#profileJourney').innerHTML='';$('#profileBody').innerHTML='<div class="empty-state">Select a student from the list.</div>';return}
@@ -586,14 +620,35 @@ function renderStudentProfile(){
  properties:`<section class="profile-section"><div class="profile-section-heading"><h3>Properties & bookings</h3><span class="section-count">${leads.length} shortlisted</span></div><div class="profile-property-list">${leads.map(l=>{const p=find('properties',l.property_id);return `<article class="profile-property">${propertyPhoto(p,`furnished serviced apartment interior`)}<div><strong>${esc(p.name||'Property not selected')}</strong><p>${esc(p.location||'Location not provided')}</p><div class="property-detail-foot"><span>${p.price?money(p.price)+'/mo':'Price pending'}</span>${statusBadge(l.status)}</div><details><summary>Opportunity notes</summary><p>${esc(l.notes||'No notes recorded.')}</p><small>Follow-up: ${esc(l.followup||'Not scheduled')}</small></details></div></article>`}).join('')||'<p class="profile-empty">No properties shortlisted yet.</p>'}</div></section>`,
  payments:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="credit-card"></i>Payments & bookings <span>${payments.length}</span></h3>${payments.map(p=>`<article class="payment-detail-row"><div><strong>${profileMoneyMarkup(p.amount)}</strong><small>${esc(find('properties',p.property_id).name||'No property')} · ${esc(p.booking)}</small><small>${esc(p.id)} · ${esc(profileDate(p.paid_at))}</small>${paymentReceiptDetails(p)}</div>${statusBadge(p.status)}</article>`).join('')||'<p class="profile-empty">No payments recorded.</p>'}</section>`,
  details:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="user-round"></i>Personal & education details</h3>${info([['Mobile',student.mobile],['Email',student.email],['Nationality',profile.nationality],['Date of birth',profile.date_of_birth],['Gender',profile.gender],['Hometown',profile.hometown],['Address',profile.address],['University',profile.college],['Destination country',profile.destination_country],['Study year',profile.study_year],['Guardian',profile.guardian_name],['Relationship',profile.guardian_relation],['Guardian mobile',profile.guardian_mobile],['Languages',profile.languages],['Source',profile.source],['Created',profileDate(student.created_at)]])}</section>
-<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="clipboard-list"></i>Accommodation requirements</h3>${info([['Preferred area',profile.preferred_area],['Apartment',profile.room_preference],['Meals',profile.food_preference],['Move-in',profile.move_in_date],['Duration',profile.stay_duration]])}<p class="profile-notes">${esc(student.notes||'No additional requirements.')}</p></section>`
+<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="clipboard-list"></i>Accommodation requirements</h3>${info([['Preferred area',profile.preferred_area],['Apartment',profile.room_preference],['Meals',profile.food_preference],['Move-in',profile.move_in_date],['Duration',profile.stay_duration]])}<p class="profile-notes">${esc(student.notes||'No additional requirements.')}</p></section><div id="studentDocuments">${studentDocumentsMarkup(student)}</div>`
  };
  const tabs=[['overview','Overview','layout-dashboard',null],['followups','Follow-ups','calendar-clock',pending.length],['properties','Properties','building-2',leads.length],['payments','Payments','credit-card',payments.length],['details','Details','user-round',null]];
  $('#profileBody').innerHTML=`${studentStatusMarkup(student)}<div class="profile-status-row">${statusBadge(student.status)}${profile.is_demo?'<span class="demo-label">DEMO PROFILE</span>':''}<div class="profile-contact"><a class="profile-contact-icon contact-call" href="tel:${esc(student.mobile)}" title="Call student" aria-label="Call ${esc(student.name)}"><i data-lucide="phone"></i></a>${student.email?`<a class="profile-contact-icon contact-email" href="mailto:${esc(student.email)}" title="Email student" aria-label="Email ${esc(student.name)}"><i data-lucide="mail"></i></a>`:''}</div></div>
- <div class="student-profile-tabs" role="tablist" aria-label="Student profile sections">${tabs.map(([key,label,icon,count])=>`<button type="button" id="student-tab-${key}" class="student-profile-tab ${activeProfileTab===key?'active':''}" role="tab" aria-selected="${activeProfileTab===key}" aria-controls="student-panel-${key}" tabindex="${activeProfileTab===key?'0':'-1'}" data-profile-tab="${key}"><i data-lucide="${icon}"></i>${label}${count===null?'':`<span>${count}</span>`}</button>`).join('')}</div>
+ <div class="student-profile-tabs" role="tablist" aria-label="Student profile sections">${tabs.map(([key,label,icon,count])=>`<button type="button" id="student-tab-${key}" class="student-profile-tab ${activeProfileTab===key?'active':''}" role="tab" aria-selected="${activeProfileTab===key}" aria-controls="student-panel-${key}" tabindex="${activeProfileTab===key?'0':'-1'}" data-profile-tab="${key}"><i data-lucide="${icon}"></i>${label}${count===null?'':`<span>${count}</span>`}${key==='details'?documentTabIndicator(student):''}</button>`).join('')}</div>
  ${tabs.map(([key])=>`<div id="student-panel-${key}" class="student-profile-panel" role="tabpanel" aria-labelledby="student-tab-${key}" ${activeProfileTab===key?'':'hidden'}>${panelContents[key]}</div>`).join('')}`;
  icons();
 }
+$('#profileBody').addEventListener('change',event=>{
+ const input=event.target,studentId=selectedStudentId;
+ if(input.matches?.('[data-document-upload]')){
+  const file=input.files?.[0];if(!file)return;
+  if(file.size>10*1024*1024||!file.size||!['application/pdf','image/jpeg','image/png','image/webp'].includes(file.type)){studentDocumentError='Choose a PDF or image, up to 10 MB.';updateDocumentUI();return}
+  const kind=input.dataset.documentUpload;
+  performDocumentAction(()=>api(`/api/students/${encodeURIComponent(studentId)}/documents/${kind}`,{method:'POST',headers:{'Content-Type':file.type,'X-Document-Name':encodeURIComponent(file.name)},body:file}));
+ }
+ if(input.matches?.('[data-document-required]')){
+  const kind=input.dataset.documentRequired,required=input.checked;
+  performDocumentAction(()=>api(`/api/students/${encodeURIComponent(studentId)}/documents/${kind}`,{method:'PATCH',body:JSON.stringify({required})}));
+ }
+});
+$('#profileBody').addEventListener('submit',event=>{
+ const form=event.target;if(!form.matches?.('[data-document-review]'))return;event.preventDefault();
+ const decision=event.submitter?.value;if(!['approve','reject'].includes(decision))return;
+ const note=form.elements.note.value.trim();if(decision==='reject'&&!note){form.elements.note.setCustomValidity('Add a short reason');form.elements.note.reportValidity();form.elements.note.oninput=()=>form.elements.note.setCustomValidity('');return}
+ const id=form.dataset.documentReview;performDocumentAction(()=>api(`/api/student-documents/${id}/${decision}`,{method:'POST',body:JSON.stringify({note})}));
+});
+
+
 let archivedStudents=[],studentArchiveLoading=false,studentArchiveLoaded=false,studentArchiveBusy=false;
 function renderStudentArchive(){
  const section=$('#studentArchiveSection');if(!section)return;
@@ -764,7 +819,7 @@ async function refreshWorkspace(){
   if(stateResult.status==='rejected')throw stateResult.reason;const state=stateResult.value;
   if(!['students','properties','leads','followups','payments'].every(key=>Array.isArray(state[key])))throw Error('Invalid CRM data');
   const changed=JSON.stringify(state)!==JSON.stringify(data);data=state;studentListReady=true;studentListError='';
-  const editing=stagePaymentDraft||stagePaymentBusy||document.activeElement?.closest?.('form')||$('#profileBody')?.querySelector?.('details[open] form')||$('.modal.show');
+  const editing=studentDocumentBusy||stagePaymentDraft||stagePaymentBusy||document.activeElement?.closest?.('form')||$('#profileBody')?.querySelector?.('details[open] form')||$('.modal.show');
   pendingWorkspaceRender ||= changed;
   if(pendingWorkspaceRender&&!editing){render();pendingWorkspaceRender=false}else{
    renderTodaySchedule();
@@ -854,7 +909,9 @@ function initNotificationHandlers(){
    updateNotifications('read',[notif.id]);
    if(notif.id.startsWith('reminder:')){showView('calendar');calendar?.gotoDate(notif.created_at);toggleNotificationPanel(false)}else if(notif.studentId){
     showView('students');
+    if(notif.actionTab==='details')activeProfileTab='details';
     if(typeof openStudentProfile==='function')openStudentProfile(notif.studentId);
+    if(notif.actionTab==='details')$('#studentDocuments')?.scrollIntoView?.({block:'start',behavior:'smooth'});
     toggleNotificationPanel(false);
    }else if(notif.actionView){
     showView(notif.actionView);

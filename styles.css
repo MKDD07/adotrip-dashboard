@@ -8822,3 +8822,45 @@ button, input, select, textarea { font-family: inherit; }
 .student-list-table th:nth-child(8) { width: 160px; }
 .student-list-table td:nth-child(5) > small { white-space: nowrap; }
 @media(max-width:991px) { .student-list-primary-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+/* Student document checklist. */
+.student-documents { border: 1px solid #e8ecf0; border-radius: 12px; padding: 20px; margin-top: 22px; background: #fff; }
+.student-documents-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+.student-documents-heading h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+.student-documents-heading h3 span { margin-left: 7px; color: #8a96a2; font-size: 12px; font-weight: 400; }
+.student-documents-heading small { font-size: 11px; color: #929ba7; }
+.document-completion { font-size: 10px; color: #ac7b40; background: #fff6e8; padding: 5px 8px; border-radius: 6px; white-space: nowrap; }
+.document-completion.complete { color: #4b8968; background: #edf8f0; }
+.document-checklist-row { display: flex; align-items: flex-start; gap: 12px; padding: 15px 0; border-top: 1px solid #f0f2f5; }
+.document-check-icon { color: #c6cdd5; padding-top: 1px; }
+.document-check-icon svg { width: 18px; height: 18px; }
+.document-approved .document-check-icon { color: #6a9c7f; }
+.document-check-content { flex: 1; min-width: 0; }
+.document-check-title { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.document-check-title strong { font-size: 12px; font-weight: 500; color: #414c5b; }
+.document-state { font-size: 9px; padding: 3px 6px; border-radius: 4px; background: #f4f5f7; color: #97a0aa; }
+.document-state.state-pending { color: #9b7a3f; background: #fff7e5; }
+.document-state.state-approved { color: #518269; background: #edf7f0; }
+.document-state.state-rejected { color: #aa6b62; background: #fdf0ed; }
+.document-file-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 10px; color: #9ba4ae; }
+.document-file-meta a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; color: #68849d; text-decoration: none; }
+.document-file-meta a:hover { text-decoration: underline; }
+.document-required-toggle { display: flex; align-items: center; gap: 5px; width: fit-content; font-size: 10px; color: #929ca7; margin-top: 7px; cursor: pointer; }
+.document-required-toggle input { width: 12px; height: 12px; accent-color: #6e8b7e; }
+.document-upload { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; gap: 6px; font-size: 10px; color: #627486; border: 1px solid #e2e7ec; padding: 7px 10px; border-radius: 6px; cursor: pointer; overflow: hidden; }
+.document-upload:hover { background: #f7f9fb; }
+.document-upload:focus-within { outline: 2px solid #91a6ba; outline-offset: 2px; }
+.document-upload svg { width: 13px; height: 13px; }
+.document-upload input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.document-upload.busy { opacity: .5; cursor: wait; }
+.document-review-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.document-review-form .form-control { flex: 1 1 160px; min-width: 0; font-size: 10px; padding: 6px 9px; min-height: 30px; }
+.document-review-form button { border: 0; border-radius: 5px; font-size: 10px; padding: 7px 9px; cursor: pointer; }
+.document-approve { background: #eaf5ee; color: #4e8364; }
+.document-reject { background: #f7f1ed; color: #9b7865; }
+.document-review-note { margin: 7px 0 0; font-size: 11px; color: #b5786c; overflow-wrap: anywhere; }
+.document-approved-version { display: inline-block; font-size: 10px; color: #6b927b; margin-top: 6px; }
+.document-feedback { font-size: 11px; color: #9e7564; margin: 0; }
+.document-feedback:empty { display: none; }
+.student-profile-tab .document-tab-dot { width: 6px; height: 6px; min-width: 6px; padding: 0; background: #cf8c78; border-radius: 50%; margin-left: 3px; }
+.student-profile-tab .document-tab-dot.review { background: #d5ad63; }
+@media(max-width:575px) { .student-documents { padding: 15px; } .student-documents-heading { flex-direction: column; gap: 8px; } .document-checklist-row { gap: 8px; } .document-file-meta a { max-width: 140px; } .document-upload { padding: 7px; } }

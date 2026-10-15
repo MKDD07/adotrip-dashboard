@@ -1,3 +1,4 @@
+import { DOCUMENT_TYPES, DocumentError, handleDocuments } from './documents.mjs';
 import { StatusError, changeStatus, decideStatus, creationStatusStatements, statusEvent } from './status-approvals.mjs';
 import { PaymentError, recordStagePayment } from './stage-payments.mjs';
 import { exchangeRatesResponse } from './exchange-rates.mjs';
@@ -19,8 +20,10 @@ async function exists(db, table, value) { const active=table==='students'?' AND 
 async function state(db) {
  const queries=TABLES.map(t=>db.prepare(`SELECT * FROM ${t}${t==='students'?' WHERE archived_at IS NULL':t==='properties'?'':' WHERE student_id IN (SELECT id FROM students WHERE archived_at IS NULL)'} ORDER BY ${t==='followups'?'starts_at':t==='payments'?'paid_at DESC':'created_at DESC'}`));
  queries.push(db.prepare("SELECT r.* FROM status_requests r JOIN students s ON s.id=r.student_id WHERE r.state='Pending' AND s.archived_at IS NULL ORDER BY r.created_at DESC"));
+ queries.push(db.prepare("SELECT d.id,d.student_id,d.document_type,d.filename,d.mime_type,d.size_bytes,d.state,d.uploaded_by,d.uploaded_by_name,d.created_at,d.reviewed_by,d.reviewed_by_name,d.reviewed_at,d.review_note FROM student_documents d JOIN students s ON s.id=d.student_id WHERE s.archived_at IS NULL AND d.state!='Superseded' ORDER BY d.created_at DESC,d.id DESC"));
+ queries.push(db.prepare("SELECT r.* FROM student_document_requirements r JOIN students s ON s.id=r.student_id WHERE s.archived_at IS NULL"));
  const rows=await db.batch(queries);
- return {...Object.fromEntries(TABLES.map((t,i)=>[t,rows[i].results])),status_requests:rows[TABLES.length].results};
+ return {...Object.fromEntries(TABLES.map((t,i)=>[t,rows[i].results])),status_requests:rows[TABLES.length].results,documents:rows[TABLES.length+1].results,document_requirements:rows[TABLES.length+2].results,document_types:DOCUMENT_TYPES};
 }
 function studentInsert(db, x, image = null, recordId = id('STU')) { return { id: recordId, statement: stmt(db, 'INSERT INTO students(id,name,mobile,email,city,course,budget,agent,status,notes,profile_json,image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [recordId, required(x.name, 'Name'), required(x.mobile, 'Mobile'), optional(x.email), optional(x.city), optional(x.course), number(x.budget, 'Budget'), optional(x.agent) || 'Arjun Mehta', choice(x.status || 'New Lead', STATUSES, 'status'), optional(x.notes), x.profile && typeof x.profile==='object' ? JSON.stringify(x.profile) : null, image]) }; }
 
@@ -79,7 +82,10 @@ async function handleApi(request, env, path, user) {
       return json({ok:true,archived:true});
     }
     if(!student.archived_at)throw new HttpError(409,'Archive the student before permanent deletion');
+    const [documentFiles]=await db.batch([stmt(db,'SELECT r2_key FROM student_documents WHERE student_id=?',[recordId])]);
     await db.batch([
+      stmt(db,'DELETE FROM student_documents WHERE student_id=?',[recordId]),
+      stmt(db,'DELETE FROM student_document_requirements WHERE student_id=?',[recordId]),
       stmt(db,'DELETE FROM notification_receipts WHERE notification_id IN (SELECT id FROM crm_activity WHERE student_id=?) OR EXISTS (SELECT 1 FROM followups f WHERE f.student_id=? AND notification_id LIKE \'reminder:\'||f.id||\':%\')',[recordId,recordId]),
       stmt(db,'DELETE FROM crm_activity WHERE student_id=?',[recordId]),
       ...['leads','followups','payments'].map(table=>stmt(db,`DELETE FROM ${table} WHERE student_id=?`,[recordId])),
@@ -87,7 +93,7 @@ async function handleApi(request, env, path, user) {
       stmt(db,'DELETE FROM students WHERE id=?',[recordId]),
       activityStatement(db,user,'students','deleted',{id:recordId,name:'Student record'})
     ]);
-    let warning;try{await env.MEDIA?.delete(`students/${recordId}`)}catch(error){console.error('Deleted student photo cleanup failed',error);warning='Student deleted, but its uploaded photo could not be removed. Contact the administrator to finish photo cleanup.'}
+    let warning;try{for(const file of documentFiles.results)await env.MEDIA?.delete(file.r2_key);await env.MEDIA?.delete(`students/${recordId}`)}catch(error){console.error('Deleted student media cleanup failed',error);warning='Student deleted, but some uploaded files could not be removed. Contact the administrator to finish storage cleanup.'}
     return json({ok:true,...(warning?{warning}:{})});
   }
   let x; try { x = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON'); }
@@ -182,6 +188,7 @@ export default {
    const user=await sessionUser(request,env);
    if(!path.startsWith('/api/')){if(!user||user.must_change_password)return Response.redirect(url.origin+'/login'+(user?.must_change_password?'?change=1':''),302);return serveAppAsset(request,env)}
    requireUser(user);
+   if(path.startsWith('/api/student-documents/')||/^\/api\/students\/[^/]+\/documents\//.test(path))return await handleDocuments(request,env,user,path);
    if(path==='/api/exchange-rates'&&request.method==='GET')return exchangeRatesResponse();
    if(path==='/api/team'||path.startsWith('/api/team/')||path.startsWith('/api/messages/'))return await handleMessages(request,env,user,path);
    if(path.startsWith('/api/notifications'))return await handleNotifications(request,env,user,path);
@@ -189,7 +196,7 @@ export default {
    if(path==='/api/images'&&request.method==='GET')return imageSearch(request,env,context);
    return await handleApi(request,env,path,user);
   }catch(error){
-   if(error instanceof AuthError||error instanceof HttpError||error instanceof PaymentError||error instanceof StatusError)return json({error:error.message},error.status);
+   if(error instanceof AuthError||error instanceof HttpError||error instanceof PaymentError||error instanceof StatusError||error instanceof DocumentError)return json({error:error.message},error.status);
    if(/UNIQUE constraint/.test(error.message))return json({error:'Duplicate email or mobile'},409);
    console.error('CRM request failed',error);return json({error:'The request could not be completed. Please retry.'},503);
   }
