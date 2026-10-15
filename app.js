@@ -320,7 +320,7 @@ const stageGuidance = {
 };
 function openStudentProfile(id){
  if(!data.students.some(s=>s.id===id)){notify('Student record not found');return}
- const student=find('students',id);showView(student.status==='Converted'?'finalized':'students');if(selectedStudentId!==id)activeProfileTab='overview';selectedStudentId=id;$('#studentSearch').value='';$('#studentStatus').value='';$('#profileError').hidden=true;renderStudents();
+ const student=find('students',id);showView(student.status==='Converted'?'finalized':'students');if(selectedStudentId!==id)activeProfileTab='overview';selectedStudentId=id;$('#studentSearch').value='';$('#studentStatus').value='';$('#profileError').hidden=true;renderStudents();if(globalThis.location)ensureProfileExchangeRates();
 }
 let progressStudentId=null;
 function updateStudentProgress(student){
@@ -332,6 +332,52 @@ function updateStudentProgress(student){
  $('#profileProgress').classList.toggle('progress-complete',value===100);$('#profileProgress').classList.toggle('progress-closed',student.status==='Lost');
  if(progressStudentId!==student.id){progressStudentId=student.id;fill.style.width='0%';const apply=()=>{if(progressStudentId===student.id)fill.style.width=value+'%'};if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));else setTimeout(apply,0)}else fill.style.width=value+'%';
 }
+const profileCurrencies=['INR','USD','GBP','EUR','CAD','AUD','AED','SGD'];
+let profileCurrency='INR',profileFx=null,profileFxLoading=false,profileFxError='',profileFxFetchedAt=0;
+function studentPaymentPlan(budget,payments){
+ const total=Math.max(0,Math.round((Number(budget)||0)*100));
+ const received=payments.filter(p=>p.status==='Successful').reduce((sum,p)=>sum+Math.max(0,Math.round((Number(p.amount)||0)*100)),0);
+ const first=Math.round(total*.1),second=Math.round(total*.6),amounts=[first,second,total-first-second];
+ let available=received;
+ const stages=amounts.map((amount,index)=>{
+  const allocated=Math.min(amount,available);available-=allocated;
+  return {percent:[10,60,30][index],amount:amount/100,received:allocated/100,due:(amount-allocated)/100,status:!total?'Not set':allocated===amount?'Paid':allocated?'Part paid':'Awaiting payment'};
+ });
+ return {total:total/100,received:received/100,outstanding:Math.max(0,total-received)/100,excess:Math.max(0,received-total)/100,stages};
+}
+function profileMoney(amount){
+ if(profileCurrency==='INR')return money(amount);
+ const rate=profileFx?.rates?.[profileCurrency];
+ return rate?'≈ '+new Intl.NumberFormat('en-IN',{style:'currency',currency:profileCurrency,currencyDisplay:'code',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(amount)*rate):'—';
+}
+function profileMoneyMarkup(amount){return `<span data-profile-amount="${Number(amount)||0}">${esc(profileMoney(amount))}</span>`}
+function paymentPlanMarkup(student,payments){
+ const plan=studentPaymentPlan(student.budget,payments),rate=profileFx?.rates?.[profileCurrency];
+ const rateText=profileFxLoading?'Updating exchange rates…':profileCurrency==='INR'?(profileFxError||'Select a currency to see a converted estimate.'):rate?`${profileFx.stale?'Last available rate':'Daily reference rate'} · ${profileFx.dates[profileCurrency]} · 1 INR = ${rate} ${profileCurrency}`:(profileFxError||'Exchange rate unavailable. Original INR amounts are shown below.');
+ return `<section class="student-payment-plan" aria-labelledby="paymentPlanTitle"><div class="payment-plan-heading"><div><span class="panel-kicker">PAYMENT PLAN · 10 / 60 / 30</span><h3 id="paymentPlanTitle">Accommodation payments</h3><p>Based on monthly budget: ${money(student.budget)} INR</p></div><label class="payment-currency-label" for="profileCurrency">Display currency<select id="profileCurrency" class="form-select form-select-sm">${profileCurrencies.map(code=>`<option value="${code}" ${profileCurrency===code?'selected':''}>${code}</option>`).join('')}</select></label></div>
+ <div class="payment-plan-summary"><div><span>Planned amount</span><strong>${profileMoneyMarkup(plan.total)}</strong></div><div><span>Payments received</span><strong>${profileMoneyMarkup(plan.received)}</strong></div><div><span>Balance remaining</span><strong>${profileMoneyMarkup(plan.outstanding)}</strong></div></div>
+ <div class="payment-stage-grid">${plan.stages.map((stage,index)=>`<article class="payment-stage ${stage.status==='Paid'?'payment-stage-paid':''}"><div class="payment-stage-top"><span class="payment-stage-number">0${index+1}</span><span class="payment-stage-percent">${stage.percent}%</span></div><h4>${['Initial payment','Accommodation payment','Final payment'][index]}</h4><p>${['To start the process','After accommodation completion','To complete the payment plan'][index]}</p><strong class="payment-stage-amount">${profileMoneyMarkup(stage.amount)}</strong><span class="payment-stage-status">${stage.status}</span><div class="payment-stage-track" role="progressbar" aria-label="${['Initial','Accommodation','Final'][index]} payment received" aria-valuenow="${stage.amount?Math.round(stage.received/stage.amount*100):0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${stage.amount?stage.received/stage.amount*100:0}%"></span></div><div class="payment-stage-balance"><span>Received <b>${profileMoneyMarkup(stage.received)}</b></span><span>Due <b>${profileMoneyMarkup(stage.due)}</b></span></div></article>`).join('')}</div>
+ ${!plan.total?'<p class="payment-plan-note">Set a monthly budget to calculate the payment stages.</p>':''}${plan.excess?`<p class="payment-plan-note">Received above this plan: ${profileMoneyMarkup(plan.excess)}.</p>`:''}
+ <p class="payment-plan-note">Successful payments are applied to the initial, accommodation and final stages in order.</p>
+ <div class="payment-fx-footer"><p id="profileFxStatus" role="status">${esc(rateText)}</p><button type="button" class="text-btn" data-refresh-profile-rates ${profileFxLoading?'disabled':''}>${profileFxLoading?'Updating…':'Refresh rates'}</button></div><p class="payment-plan-note">Payments are recorded in INR. Currency conversions are estimates using <a href="https://frankfurter.dev/" target="_blank" rel="noopener noreferrer">Frankfurter</a> daily rates; bank rates and fees may differ.</p></section>`;
+}
+function updateProfilePaymentDisplay(){
+ const student=find('students',selectedStudentId);if(!student.id)return;
+ const holder=$('#studentPaymentPlan'),focused=document.activeElement?.id;
+ if(holder)holder.innerHTML=paymentPlanMarkup(student,data.payments.filter(p=>p.student_id===student.id));
+ for(const node of $$('#profileBody [data-profile-amount]'))node.textContent=profileMoney(Number(node.dataset.profileAmount));
+ if(focused==='profileCurrency')$('#profileCurrency')?.focus?.();
+}
+async function ensureProfileExchangeRates(force=false){
+ if(profileFxLoading||!force&&profileFx&&Date.now()-profileFxFetchedAt<3600000)return;
+ profileFxLoading=true;profileFxError='';updateProfilePaymentDisplay();
+ try{
+  const result=await api('/api/exchange-rates');
+  if(result.base!=='INR'||!result.rates||!profileCurrencies.every(code=>Number.isFinite(result.rates[code])&&result.rates[code]>0)||!result.dates||!profileCurrencies.filter(c=>c!=='INR').every(c=>/^\d{4}-\d{2}-\d{2}$/.test(result.dates[c])))throw Error('Invalid exchange-rate response.');
+  profileFx=result;profileFxFetchedAt=Date.now();
+ }catch{profileFxError='Rates unavailable. INR amounts remain available.';if(profileFx)profileFx={...profileFx,stale:true}}
+ finally{profileFxLoading=false;updateProfilePaymentDisplay()}
+}
 function renderStudentProfile(){
  const student=find('students',selectedStudentId);$('#deleteStudentBtn').hidden=!student.id;
  if(!student.id){$('#profileTitle').textContent='Select a student';$('#profileSubtitle').textContent='';$('#profilePortrait').innerHTML='';$('#profileProgress').hidden=true;$('#profileJourney').innerHTML='';$('#profileBody').innerHTML='<div class="empty-state">Select a student from the list.</div>';return}
@@ -341,7 +387,8 @@ function renderStudentProfile(){
  const compactDate=value=>new Date(value).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
  const taskCard=task=>`<article class="profile-task"><div class="task-date"><strong>${compactDate(task.starts_at)}</strong><span>${new Date(task.starts_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span></div><div class="task-content"><div class="profile-task-heading"><strong>${esc(task.purpose)}</strong>${task.priority==='High'?'<span class="task-priority">High priority</span>':''}</div><details class="completion-details"><summary>Complete follow-up <i data-lucide="check"></i></summary><form class="task-completion-form" data-complete-followup="${esc(task.id)}"><label>Outcome<textarea class="form-control" name="outcome" required rows="2" placeholder="Conversation, decision, next step"></textarea></label><button class="followup-save-btn" type="submit">Mark complete</button></form></details></div></article>`;
  const panelContents={
- overview:`<div class="profile-metrics"><div><i data-lucide="wallet"></i><span>Monthly budget</span><strong>${money(student.budget)}</strong></div><div><i data-lucide="calendar-clock"></i><span>Pending tasks</span><strong>${pending.length}<small> / ${tasks.length} total</small></strong></div><div><i data-lucide="badge-check"></i><span>Payments received</span><strong>${money(paid)}</strong></div></div>
+ overview:`<div id="studentPaymentPlan">${paymentPlanMarkup(student,payments)}</div>
+<div class="profile-task-summary"><i data-lucide="calendar-clock"></i><span>Pending tasks <strong>${pending.length}</strong> / ${tasks.length} total</span></div>
 <div class="profile-facts"><span><i data-lucide="map-pin"></i>${esc(student.city||'City not provided')}</span><span><i data-lucide="graduation-cap"></i>${esc(student.course||'Course not provided')}</span>${profile.room_preference?`<span><i data-lucide="bed-double"></i>${esc(profile.room_preference)}</span>`:''}${profile.move_in_date?`<span><i data-lucide="calendar"></i>Move-in ${compactDate(profile.move_in_date)}</span>`:''}</div>
 <section class="profile-next-step"><div><span class="panel-kicker">NEXT ACTION</span><h3>${esc(pending[0]?.purpose|| (student.status==='Converted'?'Coordinate move-in':'Review enquiry'))}</h3><p>${esc(stageGuidance[student.status]||stageGuidance['New Lead'])}</p></div><i data-lucide="arrow-up-right"></i></section>
 `,
@@ -355,7 +402,7 @@ function renderStudentProfile(){
  <details class="profile-disclosure followup-history"><summary>Completed <span>${done.length}</span></summary>${[...done].sort((a,b)=>new Date(b.completed_at||b.starts_at)-new Date(a.completed_at||a.starts_at)).map(task=>`<article class="completed-task"><div><strong>${esc(task.purpose)}</strong><small>${esc(profileDate(task.completed_at||task.starts_at))}</small></div><p>${esc(task.outcome||'No outcome recorded.')}</p></article>`).join('')||'<p class="profile-empty">No completed follow-ups.</p>'}</details>
  </div>`,
  properties:`<section class="profile-section"><div class="profile-section-heading"><h3>Properties & bookings</h3><span class="section-count">${leads.length} shortlisted</span></div><div class="profile-property-list">${leads.map(l=>{const p=find('properties',l.property_id);return `<article class="profile-property">${propertyPhoto(p,`furnished serviced apartment interior`)}<div><strong>${esc(p.name||'Property not selected')}</strong><p>${esc(p.location||'Location not provided')}</p><div class="property-detail-foot"><span>${p.price?money(p.price)+'/mo':'Price pending'}</span>${statusBadge(l.status)}</div><details><summary>Opportunity notes</summary><p>${esc(l.notes||'No notes recorded.')}</p><small>Follow-up: ${esc(l.followup||'Not scheduled')}</small></details></div></article>`}).join('')||'<p class="profile-empty">No properties shortlisted yet.</p>'}</div></section>`,
- payments:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="credit-card"></i>Payments & bookings <span>${payments.length}</span></h3>${payments.map(p=>`<article class="payment-detail-row"><div><strong>${money(p.amount)}</strong><small>${esc(find('properties',p.property_id).name||'No property')} · ${esc(p.booking)}</small><small>${esc(p.id)} · ${esc(profileDate(p.paid_at))}</small></div>${statusBadge(p.status)}</article>`).join('')||'<p class="profile-empty">No payments recorded.</p>'}</section>`,
+ payments:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="credit-card"></i>Payments & bookings <span>${payments.length}</span></h3>${payments.map(p=>`<article class="payment-detail-row"><div><strong>${profileMoneyMarkup(p.amount)}</strong><small>${esc(find('properties',p.property_id).name||'No property')} · ${esc(p.booking)}</small><small>${esc(p.id)} · ${esc(profileDate(p.paid_at))}</small></div>${statusBadge(p.status)}</article>`).join('')||'<p class="profile-empty">No payments recorded.</p>'}</section>`,
  details:`<section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="user-round"></i>Personal & education details</h3>${info([['Mobile',student.mobile],['Email',student.email],['Nationality',profile.nationality],['Date of birth',profile.date_of_birth],['Gender',profile.gender],['Hometown',profile.hometown],['Address',profile.address],['University',profile.college],['Destination country',profile.destination_country],['Study year',profile.study_year],['Guardian',profile.guardian_name],['Relationship',profile.guardian_relation],['Guardian mobile',profile.guardian_mobile],['Languages',profile.languages],['Source',profile.source],['Created',profileDate(student.created_at)]])}</section>
 <section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="clipboard-list"></i>Accommodation requirements</h3>${info([['Preferred area',profile.preferred_area],['Apartment',profile.room_preference],['Meals',profile.food_preference],['Move-in',profile.move_in_date],['Duration',profile.stay_duration]])}<p class="profile-notes">${esc(student.notes||'No additional requirements.')}</p></section>`
  };
@@ -384,7 +431,8 @@ function selectProfileTab(key,focus=false){
  $$('#profileBody [data-profile-tab]').forEach(button=>{const active=button.dataset.profileTab===key;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;if(active&&focus)button.focus()});
  $$('#profileBody .student-profile-panel').forEach(panel=>panel.hidden=panel.id!=='student-panel-'+key);icons();
 }
-$('#profileBody').addEventListener('click',event=>{const tab=event.target.closest('[data-profile-tab]');if(tab)selectProfileTab(tab.dataset.profileTab)});
+$('#profileBody').addEventListener('change',event=>{if(event.target.id==='profileCurrency'&&profileCurrencies.includes(event.target.value)){profileCurrency=event.target.value;updateProfilePaymentDisplay();ensureProfileExchangeRates()}});
+$('#profileBody').addEventListener('click',event=>{const tab=event.target.closest('[data-profile-tab]');if(tab)selectProfileTab(tab.dataset.profileTab);if(event.target.closest('[data-refresh-profile-rates]'))ensureProfileExchangeRates(true)});
 $('#profileBody').addEventListener('keydown',event=>{const tab=event.target.closest('[data-profile-tab]');if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const keys=['overview','followups','properties','payments','details'],index=keys.indexOf(tab.dataset.profileTab),next=event.key==='Home'?0:event.key==='End'?keys.length-1:(index+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;selectProfileTab(keys[next],true)});
 $('#profileBody').addEventListener('submit',async event=>{
  const form=event.target;if(!form.matches('#profileStatusForm,#profileFollowupForm,[data-complete-followup]'))return;event.preventDefault();
@@ -737,7 +785,7 @@ async function startWorkspace(){
    headerDate.textContent=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date());
   }catch(_){headerDate.textContent='Wed, 14 Oct 2026'}
  }
- await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','pending','finalized','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
+ await load();if(signedInUser)await refreshTeam();renderNotifications();initNotificationHandlers();initGlobalSearchHandlers();if(globalThis.location)ensureProfileExchangeRates();const view=globalThis.location?.hash?.slice(1);if(['dashboard','students','pending','finalized','properties','leads','calendar','payments','settings'].includes(view))showView(view);icons();
 }
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#globalSearch').focus()}});
 if(!hostedStaticPage&&(typeof staticPreview==='undefined'||!staticPreview)){
