@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -25,7 +25,7 @@ const call = (env,path,method='GET',body) => worker.fetch(new Request(`https://c
 test('D1 routes persist profiles, status, follow-up outcomes and payments',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'campus-d1-')),file=join(dir,'test.db');
  try {
-  execFileSync('python3',['-c',python],{input:JSON.stringify({file,schema:readFileSync('migrations/0001_crm.sql','utf8')+readFileSync('migrations/0002_followup_outcomes.sql','utf8')+readFileSync('migrations/0003_profile_details.sql','utf8')+readFileSync('migrations/0005_property_uploads.sql','utf8')+readFileSync('migrations/0006_student_images.sql','utf8')+readFileSync('migrations/0007_auth.sql','utf8')+readFileSync('migrations/0008_notifications.sql','utf8')})});
+  execFileSync('python3',['-c',python],{input:JSON.stringify({file,schema:readdirSync('migrations').filter(name=>name.endsWith('.sql')).sort().map(name=>readFileSync('migrations/'+name,'utf8')).join('\n')})});
   const objects=new Map(),MEDIA={async put(key,bytes,options){objects.set(key,{bytes:new Uint8Array(bytes),mime:options.httpMetadata.contentType})},async get(key){const object=objects.get(key);return object?{body:object.bytes,httpEtag:'"mock-etag"',writeHttpMetadata(headers){headers.set('Content-Type',object.mime)}}:null},async delete(key){objects.delete(key)}};
   const env={DB:database(file),MEDIA,ASSETS:{fetch:async()=>new Response('asset')}};
   const token=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('a'.repeat(64)))).toString('hex');
@@ -66,9 +66,9 @@ test('D1 routes persist profiles, status, follow-up outcomes and payments',async
   const crossOrigin=await worker.fetch(new Request('https://crm.test'+deletionPath,{method:'DELETE',headers:{Cookie:'crm_session='+'a'.repeat(64),Origin:'https://other.example'}}),env);assert.equal(crossOrigin.status,403);
   const failedEnv={...env,DB:{prepare:query=>env.DB.prepare(query),batch:async()=>{throw Error('Deletion transaction failed')}}};assert.equal((await call(failedEnv,deletionPath,'DELETE')).status,503);assert.ok((await (await call(env,'/api/state')).json()).students.some(s=>s.id===student.id));
   const history=await env.DB.prepare('SELECT id FROM crm_activity WHERE student_id=?').bind(student.id).first();await env.DB.prepare('INSERT INTO notification_receipts(user_id,notification_id,is_read,dismissed) VALUES(?,?,1,0)').bind('fixture',history.id).run();
-  assert.equal((await call(env,deletionPath,'DELETE')).status,200);const afterDelete=await (await call(env,'/api/state')).json();assert.ok(!afterDelete.students.some(s=>s.id===student.id));for(const table of ['leads','followups','payments'])assert.ok(!afterDelete[table].some(r=>r.student_id===student.id));assert.ok(afterDelete.properties.some(p=>p.id===property.id));assert.ok(afterDelete.students.some(s=>s.id===withPhoto.id));assert.equal(await env.DB.prepare('SELECT * FROM notification_receipts WHERE notification_id=?').bind(history.id).first(),null);const deletionLog=await env.DB.prepare('SELECT * FROM crm_activity WHERE student_id=?').bind(student.id).first();assert.equal(deletionLog.action,'deleted');assert.equal(deletionLog.label.includes("O'Connor"),false);
+  assert.equal((await call(env,deletionPath,'DELETE')).status,200);assert.ok((await env.DB.prepare('SELECT archived_at FROM students WHERE id=?').bind(student.id).first()).archived_at);assert.equal((await call(env,deletionPath+'/permanent','DELETE')).status,200);const afterDelete=await (await call(env,'/api/state')).json();assert.ok(!afterDelete.students.some(s=>s.id===student.id));for(const table of ['leads','followups','payments'])assert.ok(!afterDelete[table].some(r=>r.student_id===student.id));assert.ok(afterDelete.properties.some(p=>p.id===property.id));assert.ok(afterDelete.students.some(s=>s.id===withPhoto.id));assert.equal(await env.DB.prepare('SELECT * FROM notification_receipts WHERE notification_id=?').bind(history.id).first(),null);const deletionLog=await env.DB.prepare('SELECT * FROM crm_activity WHERE student_id=?').bind(student.id).first();assert.equal(deletionLog.action,'deleted');assert.equal(deletionLog.label.includes("O'Connor"),false);
   const feed=await (await call(env,'/api/notifications')).json();assert.ok(feed.notifications.some(n=>n.title==='Student deleted'&&n.studentId===null));assert.equal((await call(env,deletionPath,'DELETE')).status,404);
-  assert.equal((await call(env,`/api/students/${withPhoto.id}`,'DELETE')).status,200);assert.equal(objects.has(`students/${withPhoto.id}`),false);
+  assert.equal((await call(env,`/api/students/${withPhoto.id}`,'DELETE')).status,200);assert.equal(objects.has(`students/${withPhoto.id}`),true);assert.equal((await call(env,`/api/students/${withPhoto.id}/permanent`,'DELETE')).status,200);assert.equal(objects.has(`students/${withPhoto.id}`),false);
 
   for(let i=0;i<2;i++)execFileSync('python3',['-c',python],{input:JSON.stringify({file,schema:readFileSync('data/demo.sql','utf8')})});
   const seeded=await (await call(env,'/api/state')).json(),demo=seeded.students.filter(s=>s.id.startsWith('DEMO-STU-'));

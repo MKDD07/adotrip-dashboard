@@ -167,7 +167,7 @@
                             <h2 id="profileTitle">Select a student</h2>
                             <p id="profileSubtitle"></p>
                         </div>
-                        <button type="button" id="deleteStudentBtn" class="icon-btn profile-delete-btn" title="Delete student" aria-label="Delete selected student" hidden><i data-lucide="trash-2"></i></button>
+                        <button type="button" id="deleteStudentBtn" class="icon-btn profile-delete-btn" title="Archive student" aria-label="Archive selected student" hidden><i data-lucide="archive"></i></button>
                         <div id="profileProgress" class="profile-progress" hidden>
                             <div class="profile-progress-label"><span id="profileProgressStage"></span><strong id="profileProgressPercent"></strong></div>
                             <div id="profileProgressTrack" class="profile-progress-track" role="progressbar" aria-label="Booking stage progress" aria-valuemin="0" aria-valuemax="100"><span id="profileProgressFill" class="profile-progress-fill"></span></div>
@@ -315,6 +315,12 @@
                 <img class="hero-background" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23eeeee7%22/%3E%3C/svg%3E" data-target="settings-workspace-hero" data-query="bright furnished serviced apartment living room interior" data-kind="other" alt="" aria-hidden="true" loading="lazy">
                 <div class="workspace-hero-footer"><div class="hero-actions"><button class="btn btn-dark" data-open-view="dashboard"><i data-lucide="arrow-up-right"></i>Open dashboard</button><button type="button" class="btn btn-light" id="exportBtn"><i data-lucide="download"></i>Export data</button></div><div class="hero-facts" id="settingsHeroFacts"></div></div>
             </div>
+            <section id="studentArchiveSection" class="panel student-archive-panel" hidden>
+                <div class="panel-head"><div><span class="panel-kicker">ADMINISTRATORS ONLY</span><h3>Student archive <span id="studentArchiveCount" class="section-count">0</span></h3></div><button type="button" class="text-btn" id="refreshStudentArchive">Refresh archive</button></div>
+                <p class="student-archive-copy">Archived students and their linked records are kept here. Restore a student to return them to the workspace, or permanently delete their records.</p>
+                <p id="studentArchiveError" class="auth-error" role="alert" hidden></p>
+                <div id="studentArchiveList" class="student-archive-list" aria-live="polite"></div>
+            </section>
             <section id="accountSettings" class="panel account-settings" hidden>
                 <div class="panel-head"><span class="panel-kicker">TEAM ACCESS</span>
                     <h3>Create a team account</h3>

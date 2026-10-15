@@ -13,8 +13,8 @@ function required(value, field) { const out = optional(value); if (!out) throw n
 function choice(value, choices, field) { if (!choices.includes(value)) throw new HttpError(400, `Invalid ${field}`); return value; }
 function number(value, field) { const out = Number(value || 0); if (!Number.isFinite(out) || out < 0) throw new HttpError(400, `${field} must be a non-negative number`); return out; }
 const stmt = (db, sql, values = []) => db.prepare(sql).bind(...values);
-async function exists(db, table, value) { if (!await stmt(db, `SELECT id FROM ${table} WHERE id=?`, [value]).first()) throw new HttpError(404, `${table.slice(0, -1)} not found`); }
-async function state(db) { const rows = await db.batch(TABLES.map(t => db.prepare(`SELECT * FROM ${t} ORDER BY ${t === 'followups' ? 'starts_at' : t === 'payments' ? 'paid_at DESC' : 'created_at DESC'}`))); return Object.fromEntries(TABLES.map((t, i) => [t, rows[i].results])); }
+async function exists(db, table, value) { const active=table==='students'?' AND archived_at IS NULL':['leads','followups','payments'].includes(table)?' AND student_id IN (SELECT id FROM students WHERE archived_at IS NULL)':'';if (!await stmt(db, `SELECT id FROM ${table} WHERE id=?${active}`, [value]).first()) throw new HttpError(404, `${table.slice(0, -1)} not found`); }
+async function state(db) { const rows = await db.batch(TABLES.map(t => db.prepare(`SELECT * FROM ${t}${t==='students'?' WHERE archived_at IS NULL':t==='properties'?'':' WHERE student_id IN (SELECT id FROM students WHERE archived_at IS NULL)'} ORDER BY ${t === 'followups' ? 'starts_at' : t === 'payments' ? 'paid_at DESC' : 'created_at DESC'}`))); return Object.fromEntries(TABLES.map((t, i) => [t, rows[i].results])); }
 function studentInsert(db, x, image = null, recordId = id('STU')) { return { id: recordId, statement: stmt(db, 'INSERT INTO students(id,name,mobile,email,city,course,budget,agent,status,notes,profile_json,image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [recordId, required(x.name, 'Name'), required(x.mobile, 'Mobile'), optional(x.email), optional(x.city), optional(x.course), number(x.budget, 'Budget'), optional(x.agent) || 'Arjun Mehta', choice(x.status || 'New Lead', STATUSES, 'status'), optional(x.notes), x.profile && typeof x.profile==='object' ? JSON.stringify(x.profile) : null, image]) }; }
 
 function parsePhoto(value){
@@ -49,6 +49,11 @@ async function handleApi(request, env, path, user) {
     if (path === '/api/health') { await db.prepare('SELECT 1').first(); return json({ ok: true, database: 'Cloudflare D1' }); }
     const imageMatch=path.match(/^\/api\/property-images\/([^/]+)$/);
     if(imageMatch){const photo=await stmt(db,'SELECT mime_type,image_data FROM property_images WHERE property_id=?',[decodeURIComponent(imageMatch[1])]).first();if(!photo)throw new HttpError(404,'Property image not found');const bytes=Uint8Array.from(atob(photo.image_data),c=>c.charCodeAt(0));return new Response(bytes,{headers:{'Content-Type':photo.mime_type,'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff',...(new URL(request.url).searchParams.get('download')==='1'?{'Content-Disposition':`attachment; filename="property-${imageMatch[1]}.jpg"`}:{})}})}
+    if (path === '/api/students/archive') {
+      if(user.role!=='admin')throw new HttpError(403,'Only administrators can access the student archive');
+      const [rows]=await db.batch([db.prepare('SELECT s.*,u.name AS archived_by_name,(SELECT COUNT(*) FROM leads WHERE student_id=s.id) AS lead_count,(SELECT COUNT(*) FROM followups WHERE student_id=s.id) AS followup_count,(SELECT COUNT(*) FROM payments WHERE student_id=s.id) AS payment_count FROM students s LEFT JOIN auth_users u ON u.id=s.archived_by WHERE s.archived_at IS NOT NULL ORDER BY s.archived_at DESC,s.id')]);
+      return json({students:rows.results});
+    }
     if (path === '/api/state') return json(await state(db));
     if (path === '/api/export') return json({ exported_at: new Date().toISOString(), ...await state(db) });
   }
@@ -57,8 +62,16 @@ async function handleApi(request, env, path, user) {
   const origin = request.headers.get('Origin');
   if (origin && origin !== new URL(request.url).origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') throw new HttpError(403, 'Cross-origin changes are not allowed');
   if (request.method === 'DELETE') {
-    const match=path.match(/^\/api\/students\/([^/]+)$/);if(!match)throw new HttpError(404,'Route not found');
-    const recordId=decodeURIComponent(match[1]);await exists(db,'students',recordId);
+    const match=path.match(/^\/api\/students\/([^/]+)(\/permanent)?$/);if(!match)throw new HttpError(404,'Route not found');
+    if(user.role!=='admin')throw new HttpError(403,'Only administrators can archive or permanently delete students');
+    const recordId=decodeURIComponent(match[1]),student=await stmt(db,'SELECT id,archived_at FROM students WHERE id=?',[recordId]).first();
+    if(!student)throw new HttpError(404,'Student not found');
+    if(!match[2]){
+      if(student.archived_at)throw new HttpError(409,'Student is already archived');
+      await db.batch([stmt(db,'UPDATE students SET archived_at=?,archived_by=? WHERE id=? AND archived_at IS NULL',[new Date().toISOString(),user.id,recordId]),activityStatement(db,user,'students','archived',{id:recordId,name:'Student record'})]);
+      return json({ok:true,archived:true});
+    }
+    if(!student.archived_at)throw new HttpError(409,'Archive the student before permanent deletion');
     await db.batch([
       stmt(db,'DELETE FROM notification_receipts WHERE notification_id IN (SELECT id FROM crm_activity WHERE student_id=?) OR EXISTS (SELECT 1 FROM followups f WHERE f.student_id=? AND notification_id LIKE \'reminder:\'||f.id||\':%\')',[recordId,recordId]),
       stmt(db,'DELETE FROM crm_activity WHERE student_id=?',[recordId]),
@@ -72,6 +85,15 @@ async function handleApi(request, env, path, user) {
   let x; try { x = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON'); }
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw new HttpError(400, 'Expected a JSON object');
   if (request.method === 'POST') {
+    const restoreMatch=path.match(/^\/api\/students\/([^/]+)\/restore$/);
+    if(restoreMatch){
+      if(user.role!=='admin')throw new HttpError(403,'Only administrators can restore archived students');
+      const recordId=decodeURIComponent(restoreMatch[1]),student=await stmt(db,'SELECT id,archived_at FROM students WHERE id=?',[recordId]).first();
+      if(!student)throw new HttpError(404,'Student not found');
+      if(!student.archived_at)throw new HttpError(409,'Student is not archived');
+      await db.batch([stmt(db,'UPDATE students SET archived_at=NULL,archived_by=NULL WHERE id=? AND archived_at IS NOT NULL',[recordId]),activityStatement(db,user,'students','restored',{id:recordId,name:'Student record'})]);
+      return json({ok:true});
+    }
     if (path === '/api/students') { const photo=parsePhoto(x.image_data),recordId=id('STU'),record=studentInsert(db,x,photo?`/api/media/students/${recordId}`:null,recordId);await persistPhoto(env,`students/${recordId}`,photo,()=>db.batch([record.statement,activityStatement(db,user,'students','created',{...x,id:recordId})]));return json({id:recordId},201); }
     if (path === '/api/students/import') {
       if (!Array.isArray(x.rows) || x.rows.length > 1000) throw new HttpError(400, 'Import up to 1,000 rows at a time');

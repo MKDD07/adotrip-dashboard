@@ -67,7 +67,7 @@ function showDataError(error){
  else console.error('CRM data unavailable:',error.message);
 }
 if($('#retryData'))$('#retryData').onclick=()=>load().catch(showDataError);
-function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();const chart=renderCharts();icons();return chart}
+function render(){renderWorkspaceHeroes();renderStats();renderStudents();renderProperties();renderLeads();renderSchedule();renderPayments();fillOptions();renderStudentArchive();const chart=renderCharts();icons();return chart}
 let dashboardPeriod='month';
 let dashboardYear=null;
 let studentDirectoryMode='pending';
@@ -274,7 +274,7 @@ function renderCharts(){renderDashboardYears();const data=dashboardData(),months
 function advanceStudent(id){openStudentProfile(id)}
 async function advanceLead(id){const lead=find('leads',id),flow=['New Lead','Contacted','Interested','Follow-up Required','Converted'],index=flow.indexOf(lead.status);if(index>=0&&index<flow.length-1)await moveLead(id,flow[index+1])}
 function shortlist(id){if(propertyPeople(id).some(person=>person.booked))return;bootstrap.Modal.getOrCreateInstance($('#leadModal')).show();setTimeout(()=>$('#leadForm [name=property_id]').value=id,100)}
-function showView(name){if(name==='pending')name='students';if(name==='students'||name==='finalized'){const mode=name==='finalized'?'finalized':'pending';if(studentDirectoryMode!==mode){studentDirectoryMode=mode;selectedStudentId=null;activeProfileTab='overview';$('#studentSearch').value='';$('#studentStatus').value='';}renderStudents();renderWorkspaceHeroes();}if($('#dashboardPeriodSwitch'))$('#dashboardPeriodSwitch').hidden=name!=='dashboard';$$('.view').forEach(x=>x.classList.remove('active'));$(`#${name==='finalized'?'students':name}View`).classList.add('active');$$('.nav-link[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const labels={dashboard:['Dashboard','Indian students, overseas apartments and arrivals.'],students:['Pending','Manage student enquiries awaiting finalization.'],finalized:['Finalized','Converted students and finalized bookings.'],properties:['Properties','Find and shortlist the perfect stay.'],leads:['Lead pipeline','Move opportunities toward booking.'],calendar:['Calendar','Calls, visits and reminders.'],payments:['Payments','Transactions and confirmed bookings.'],settings:['Settings','Database and integration configuration.']};$('#viewTitle').textContent=labels[name][0];$('#viewSubtitle').textContent=labels[name][1];$('#sidebar').classList.remove('open');if(name==='calendar')setTimeout(()=>calendar?.updateSize(),50)}
+function showView(name){if(name==='pending')name='students';if(name==='students'||name==='finalized'){const mode=name==='finalized'?'finalized':'pending';if(studentDirectoryMode!==mode){studentDirectoryMode=mode;selectedStudentId=null;activeProfileTab='overview';$('#studentSearch').value='';$('#studentStatus').value='';}renderStudents();renderWorkspaceHeroes();}if($('#dashboardPeriodSwitch'))$('#dashboardPeriodSwitch').hidden=name!=='dashboard';$$('.view').forEach(x=>x.classList.remove('active'));$(`#${name==='finalized'?'students':name}View`).classList.add('active');$$('.nav-link[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===name));const labels={dashboard:['Dashboard','Indian students, overseas apartments and arrivals.'],students:['Pending','Manage student enquiries awaiting finalization.'],finalized:['Finalized','Converted students and finalized bookings.'],properties:['Properties','Find and shortlist the perfect stay.'],leads:['Lead pipeline','Move opportunities toward booking.'],calendar:['Calendar','Calls, visits and reminders.'],payments:['Payments','Transactions and confirmed bookings.'],settings:['Settings','Database and integration configuration.']};$('#viewTitle').textContent=labels[name][0];$('#viewSubtitle').textContent=labels[name][1];$('#sidebar').classList.remove('open');if(name==='settings'&&signedInUser?.role==='admin')loadStudentArchive();if(name==='calendar')setTimeout(()=>calendar?.updateSize(),50)}
 function bindForm(id,route){$(id).addEventListener('submit',async event=>{
  event.preventDefault();const button=event.submitter; if(button)button.disabled=true;
  try{
@@ -379,7 +379,7 @@ async function ensureProfileExchangeRates(force=false){
  finally{profileFxLoading=false;updateProfilePaymentDisplay()}
 }
 function renderStudentProfile(){
- const student=find('students',selectedStudentId);$('#deleteStudentBtn').hidden=!student.id;
+ const student=find('students',selectedStudentId);$('#deleteStudentBtn').hidden=!student.id||signedInUser?.role!=='admin';
  if(!student.id){$('#profileTitle').textContent='Select a student';$('#profileSubtitle').textContent='';$('#profilePortrait').innerHTML='';$('#profileProgress').hidden=true;$('#profileJourney').innerHTML='';$('#profileBody').innerHTML='<div class="empty-state">Select a student from the list.</div>';return}
  const profile=profileInfo(student),leads=data.leads.filter(l=>l.student_id===student.id),tasks=data.followups.filter(f=>f.student_id===student.id).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)),payments=data.payments.filter(p=>p.student_id===student.id),pending=tasks.filter(f=>f.status!=='Done'),done=tasks.filter(f=>f.status==='Done'),paid=payments.filter(p=>p.status==='Successful').reduce((sum,p)=>sum+Number(p.amount),0);
  updateStudentProgress(student);$('#profileTitle').textContent=student.name;$('#profileSubtitle').textContent=`${studentReference(student)} · ${student.agent||'Unassigned'}`;$('#profilePortrait').innerHTML=personImage(student,'profile-portrait');
@@ -412,15 +412,48 @@ function renderStudentProfile(){
  ${tabs.map(([key])=>`<div id="student-panel-${key}" class="student-profile-panel" role="tabpanel" aria-labelledby="student-tab-${key}" ${activeProfileTab===key?'':'hidden'}>${panelContents[key]}</div>`).join('')}`;
  icons();
 }
+let archivedStudents=[],studentArchiveLoading=false,studentArchiveLoaded=false,studentArchiveBusy=false;
+function renderStudentArchive(){
+ const section=$('#studentArchiveSection');if(!section)return;
+ const admin=signedInUser?.role==='admin';section.hidden=!admin;if(!admin){archivedStudents=[];studentArchiveLoaded=false;return}
+ $('#studentArchiveCount').textContent=String(archivedStudents.length);
+ $('#refreshStudentArchive').disabled=studentArchiveLoading||studentArchiveBusy;
+ $('#studentArchiveList').setAttribute('aria-busy',String(studentArchiveLoading));
+ if(studentArchiveLoading){$('#studentArchiveList').innerHTML='<div class="empty-state">Loading archived students…</div>';return}
+ if(!studentArchiveLoaded){$('#studentArchiveList').innerHTML='<div class="empty-state">Open or refresh the archive to load archived students.</div>';return}
+ $('#studentArchiveList').innerHTML=archivedStudents.map(student=>`<article class="student-archive-row"><div class="student-archive-person"><strong>${esc(student.name)}</strong><span class="student-reference">${esc(studentReference(student))}</span><small>Archived ${esc(profileDate(student.archived_at))}${student.archived_by_name?` by ${esc(student.archived_by_name)}`:''}</small><small>${Number(student.lead_count)||0} leads · ${Number(student.followup_count)||0} follow-ups · ${Number(student.payment_count)||0} payments</small></div><div class="student-archive-actions"><button type="button" class="btn btn-outline-secondary btn-sm" data-restore-student="${esc(student.id)}" ${studentArchiveBusy?'disabled':''}>Restore</button><button type="button" class="btn btn-outline-danger btn-sm" data-permanent-delete-student="${esc(student.id)}" ${studentArchiveBusy?'disabled':''}>Delete permanently</button></div></article>`).join('')||'<div class="empty-state">No archived students.</div>';
+}
+async function loadStudentArchive(){
+ if(signedInUser?.role!=='admin'||studentArchiveLoading)return;
+ studentArchiveLoading=true;$('#studentArchiveError').hidden=true;renderStudentArchive();
+ try{const result=await api('/api/students/archive');if(!Array.isArray(result.students))throw Error('Unable to load the student archive.');archivedStudents=result.students;studentArchiveLoaded=true}
+ catch(error){$('#studentArchiveError').textContent=error.message;$('#studentArchiveError').hidden=false}
+ finally{studentArchiveLoading=false;renderStudentArchive()}
+}
+async function manageArchivedStudent(id,permanent){
+ if(signedInUser?.role!=='admin'||studentArchiveBusy)return;
+ const student=archivedStudents.find(row=>row.id===id);if(!student)return;
+ const message=permanent?`Permanently delete ${student.name} (${studentReference(student)})?\n\nThis removes their profile, ${student.lead_count} leads, ${student.followup_count} follow-ups, ${student.payment_count} payments and uploaded photo from the archive. This cannot be undone.`:`Restore ${student.name} (${studentReference(student)}) to the active workspace?`;
+ if(!window.confirm(message))return;
+ studentArchiveBusy=true;$('#studentArchiveError').hidden=true;renderStudentArchive();
+ try{
+  const result=await api(`/api/students/${encodeURIComponent(id)}/${permanent?'permanent':'restore'}`,permanent?{method:'DELETE'}:{method:'POST',body:'{}'});
+  archivedStudents=archivedStudents.filter(row=>row.id!==id);renderStudentArchive();notify(result.warning||(permanent?'Student permanently deleted':'Student restored'));
+  await load();await loadStudentArchive();
+ }catch(error){$('#studentArchiveError').textContent=error.message;$('#studentArchiveError').hidden=false}
+ finally{studentArchiveBusy=false;renderStudentArchive()}
+}
+if($('#refreshStudentArchive'))$('#refreshStudentArchive').onclick=loadStudentArchive;
+if($('#studentArchiveList'))$('#studentArchiveList').addEventListener('click',event=>{const remove=event.target.closest('[data-permanent-delete-student]'),restore=event.target.closest('[data-restore-student]');if(remove)manageArchivedStudent(remove.dataset.permanentDeleteStudent,true);else if(restore)manageArchivedStudent(restore.dataset.restoreStudent,false)});
 async function deleteSelectedStudent(){
- const student=find('students',selectedStudentId);if(!student.id)return;
+ const student=find('students',selectedStudentId);if(!student.id||signedInUser?.role!=='admin')return;
  const linked=table=>data[table].filter(row=>row.student_id===student.id).length;
- if(!window.confirm(`Permanently delete ${student.name}?\n\nThis removes their profile, ${linked('leads')} leads, ${linked('followups')} follow-ups, ${linked('payments')} payments and uploaded photo. This cannot be undone.`))return;
+ if(!window.confirm(`Archive ${student.name}?\n\nTheir profile, ${linked('leads')} leads, ${linked('followups')} follow-ups and ${linked('payments')} payments will move out of the active workspace. An administrator can restore or permanently delete them from Settings → Student archive.`))return;
  const button=$('#deleteStudentBtn');button.disabled=true;$('#profileError').hidden=true;
  try{
   const result=await api(`/api/students/${encodeURIComponent(student.id)}`,{method:'DELETE'});
   for(const table of ['students','leads','followups','payments'])data[table]=data[table].filter(row=>table==='students'?row.id!==student.id:row.student_id!==student.id);
-  selectedStudentId=null;activeProfileTab='overview';render();notify(result.warning||'Student deleted');
+  selectedStudentId=null;activeProfileTab='overview';render();notify('Student moved to archive');await loadStudentArchive();
   await refreshNotifications().catch(()=>{});
  }catch(error){$('#profileError').textContent=error.message;$('#profileError').hidden=false}finally{button.disabled=false}
 }

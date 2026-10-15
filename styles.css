@@ -8588,3 +8588,16 @@ button, input, select, textarea { font-family: inherit; }
     .payment-stage-status { align-self: flex-start; }
     .payment-stage-amount { text-align: left; }
 }
+
+.student-archive-panel { margin-bottom: 24px; padding: 24px; }
+.student-archive-panel[hidden] { display: none; }
+.student-archive-panel .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 12px; }
+.student-archive-panel h3 { margin: 6px 0 0; font-size: var(--text-body); }
+.student-archive-copy { color: #858b94; font-size: var(--text-caption); line-height: 1.6; margin: 0 0 18px; }
+.student-archive-list { max-height: 480px; overflow: auto; }
+.student-archive-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border-top: 1px solid #edf0f2; }
+.student-archive-person { display: grid; gap: 5px; min-width: 0; }
+.student-archive-person strong { font-size: var(--text-body); font-weight: 500; }
+.student-archive-person > span,.student-archive-person small { font-size: var(--text-caption); color: #858b94; }
+.student-archive-actions { display: flex; flex-wrap: wrap; flex-shrink: 0; gap: 10px; }
+@media(max-width: 575px) { .student-archive-row { align-items: flex-start; flex-direction: column; gap: 14px; } .student-archive-panel { padding: 18px; } }
