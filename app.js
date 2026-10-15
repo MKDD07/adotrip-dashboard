@@ -577,7 +577,7 @@ function studentDocumentsMarkup(student){
  return `<section class="profile-section student-documents" aria-labelledby="studentDocumentsHeading" aria-busy="${studentDocumentBusy}"><div class="student-documents-heading"><div><h3 id="studentDocumentsHeading">Documents <span>${complete}/${required.length}</span></h3><small>${admin?'Review and finalize':'Uploads are submitted for admin review'} · PDF or images · 10 MB</small></div><span class="document-completion ${complete===required.length?'complete':''}">${complete===required.length?'Complete':required.length-complete+' outstanding'}</span></div>
  <div class="document-checklist">${list.map(row=>{
   const doc=row.latest,state=row.pending?'In review':row.approved?'Approved':doc?.state==='Rejected'?'Changes needed':'Missing';
-  return `<article class="document-checklist-row ${row.approved?'document-approved':''}"><div class="document-check-icon"><i data-lucide="${row.approved?'circle-check':row.pending?'clock-3':'circle'}"></i></div><div class="document-check-content"><div class="document-check-title"><strong>${esc(row.label)}</strong><span class="document-state state-${row.pending?'pending':row.approved?'approved':doc?.state==='Rejected'?'rejected':'missing'}">${!row.required&&!doc?'Optional':state}</span></div><div class="document-file-meta">${doc?`<a href="/api/student-documents/${esc(doc.id)}/file" title="Download ${esc(doc.filename)}">${esc(doc.filename)}</a><span>${Math.max(1,Math.round(doc.size_bytes/1024))} KB · ${esc(doc.uploaded_by_name)}</span>`:`<span>${row.required?'Required':'If applicable'}</span>`}</div>${row.pending&&row.approved?`<a class="document-approved-version" href="/api/student-documents/${esc(row.approved.id)}/file">Current approved file</a>`:''}${doc?.state==='Rejected'&&!row.approved?`<p class="document-review-note">${esc(doc.review_note||'Upload a corrected file')}</p>`:''}${admin?`<label class="document-required-toggle"><input type="checkbox" data-document-required="${esc(row.id)}" ${row.required?'checked':''} ${disabled}> Required</label>`:''}${admin&&row.pending?`<form class="document-review-form" data-document-review="${esc(row.pending.id)}"><input class="form-control" name="note" maxlength="300" placeholder="Reason if changes needed" aria-label="Review note for ${esc(row.label)}" ${disabled}><button type="submit" name="decision" value="approve" formnovalidate class="document-approve" ${disabled}>Approve</button><button type="submit" name="decision" value="reject" class="document-reject" ${disabled}>Request changes</button></form>`:''}</div><label class="document-upload ${studentDocumentBusy?'busy':''}"><i data-lucide="upload"></i><span>${doc?'Replace':admin?'Upload':'Submit draft'}</span><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" data-document-upload="${esc(row.id)}" aria-label="${doc?'Replace':'Upload'} ${esc(row.label)}" ${disabled}></label></article>`;
+  return `<article class="document-checklist-row ${row.approved?'document-approved':''}"><div class="document-check-icon"><i data-lucide="${row.approved?'circle-check':row.pending?'clock-3':'circle'}"></i></div><div class="document-check-content"><div class="document-check-title"><strong>${esc(row.label)}</strong><span class="document-state state-${row.pending?'pending':row.approved?'approved':doc?.state==='Rejected'?'rejected':'missing'}">${!row.required&&!doc?'Optional':state}</span></div><div class="document-file-meta">${doc?`<button type="button" class="document-filename" data-document-view="${esc(doc.id)}" title="View ${esc(doc.filename)}">${esc(doc.filename)}</button><span>${Math.max(1,Math.round(doc.size_bytes/1024))} KB · ${esc(doc.uploaded_by_name)}</span>`:`<span>${row.required?'Required':'If applicable'}</span>`}</div>${row.pending&&row.approved?`<button type="button" class="document-approved-version" data-document-view="${esc(row.approved.id)}">View approved file</button>`:''}${doc?.state==='Rejected'&&!row.approved?`<p class="document-review-note">${esc(doc.review_note||'Upload a corrected file')}</p>`:''}${admin?`<label class="document-required-toggle"><input type="checkbox" data-document-required="${esc(row.id)}" ${row.required?'checked':''} ${disabled}> Required</label>`:''}${admin&&row.pending?`<form class="document-review-form" data-document-review="${esc(row.pending.id)}"><input class="form-control" name="note" maxlength="300" placeholder="Reason if changes needed" aria-label="Review note for ${esc(row.label)}" ${disabled}><button type="submit" name="decision" value="approve" formnovalidate class="document-approve" ${disabled}>Approve</button><button type="submit" name="decision" value="reject" class="document-reject" ${disabled}>Request changes</button></form>`:''}</div><div class="document-row-actions">${doc?`<button type="button" class="document-view" data-document-view="${esc(doc.id)}"><i data-lucide="eye"></i>View</button>`:''}<label class="document-upload ${studentDocumentBusy?'busy':''}"><i data-lucide="upload"></i><span>${doc?'Replace':admin?'Upload':'Submit draft'}</span><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" data-document-upload="${esc(row.id)}" aria-label="${doc?'Replace':'Upload'} ${esc(row.label)}" ${disabled}></label></div></article>`;
  }).join('')}</div><p class="document-feedback" id="studentDocumentFeedback" role="status">${studentDocumentBusy?'Saving…':esc(studentDocumentError)}</p></section>`;
 }
 function updateDocumentUI(){
@@ -628,6 +628,41 @@ function renderStudentProfile(){
  ${tabs.map(([key])=>`<div id="student-panel-${key}" class="student-profile-panel" role="tabpanel" aria-labelledby="student-tab-${key}" ${activeProfileTab===key?'':'hidden'}>${panelContents[key]}</div>`).join('')}`;
  icons();
 }
+let documentPreviewUrl=null,documentPreviewRequest=null,documentPreviewVersion=0;
+function clearDocumentPreview(){
+ documentPreviewVersion++;documentPreviewRequest?.abort();documentPreviewRequest=null;
+ const content=$('#documentPreviewContent');if(content)content.replaceChildren();
+ if(documentPreviewUrl){URL.revokeObjectURL(documentPreviewUrl);documentPreviewUrl=null}
+ document.body.classList.remove('document-preview-open');
+}
+async function openDocumentPreview(id){
+ const doc=(data.documents||[]).find(row=>row.id===id&&row.student_id===selectedStudentId);if(!doc)return;
+ clearDocumentPreview();const version=documentPreviewVersion,dialog=$('#documentPreview'),content=$('#documentPreviewContent'),feedback=$('#documentPreviewFeedback');
+ $('#documentPreviewTitle').textContent=doc.filename;$('#documentPreviewState').textContent=doc.state==='Pending'?'Draft · awaiting review':doc.state;
+ $('#documentPreviewDownload').href=`${API_ORIGIN}/api/student-documents/${encodeURIComponent(doc.id)}/file`;
+ feedback.textContent='Loading preview…';feedback.hidden=false;dialog.showModal();document.body.classList.add('document-preview-open');documentPreviewRequest=new AbortController();
+ try{
+  const response=await fetch(`${API_ORIGIN}/api/student-documents/${encodeURIComponent(doc.id)}/file`,{cache:'no-store',signal:documentPreviewRequest.signal});
+  if(!response.ok){let message='Unable to load this file.';try{message=(await response.json()).error||message}catch{}throw Error(message)}
+  const blob=await response.blob();if(version!==documentPreviewVersion)return;
+  if(!['application/pdf','image/jpeg','image/png','image/webp'].includes(blob.type))throw Error('Preview unavailable. Download the file to view it.');
+  documentPreviewUrl=URL.createObjectURL(blob);
+  if(blob.type==='application/pdf'){
+   const frame=document.createElement('iframe');frame.title=doc.filename;frame.src=documentPreviewUrl;content.append(frame);
+   feedback.textContent='PDF not displaying? Use Download.';
+  }else{
+   const img=document.createElement('img');img.alt=doc.filename;
+   img.onload=()=>{if(version===documentPreviewVersion)feedback.hidden=true};
+   img.onerror=()=>{if(version===documentPreviewVersion){feedback.hidden=false;feedback.textContent='Image preview unavailable. Use Download.'}};
+   img.src=documentPreviewUrl;content.append(img);
+  }
+ }catch(error){if(version===documentPreviewVersion&&error.name!=='AbortError'){feedback.textContent=error.message;feedback.hidden=false}}
+}
+$('#profileBody').addEventListener('click',event=>{const button=event.target.closest('[data-document-view]');if(button)openDocumentPreview(button.dataset.documentView)});
+$('#documentPreviewClose').onclick=()=>$('#documentPreview').close();
+$('#documentPreview').addEventListener('close',clearDocumentPreview);
+$('#documentPreview').addEventListener('click',event=>{if(event.target!==event.currentTarget)return;const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)event.currentTarget.close()});
+
 $('#profileBody').addEventListener('change',event=>{
  const input=event.target,studentId=selectedStudentId;
  if(input.matches?.('[data-document-upload]')){

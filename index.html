@@ -491,6 +491,11 @@
     </section>
     <div id="teamMessageTooltip" class="team-message-tooltip" role="tooltip" hidden></div>
     <div class="toast-container toast-container-layout">
+        <dialog id="documentPreview" class="document-preview-dialog" aria-labelledby="documentPreviewTitle">
+            <header class="document-preview-heading"><div><h3 id="documentPreviewTitle">Document</h3><small id="documentPreviewState"></small></div><div class="document-preview-controls"><a id="documentPreviewDownload" class="document-view" href="#"><i data-lucide="download"></i>Download</a><button id="documentPreviewClose" type="button" autofocus class="document-preview-close" aria-label="Close document preview"><i data-lucide="x"></i></button></div></header>
+            <div id="documentPreviewContent" class="document-preview-content"></div>
+            <p id="documentPreviewFeedback" class="document-preview-feedback" role="status"></p>
+        </dialog>
         <div class="toast" id="appToast">
             <div class="toast-body toast-body-layout"><i data-lucide="circle-check"></i><span id="toastText"></span></div>
         </div>
