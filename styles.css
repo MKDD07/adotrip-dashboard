@@ -8644,3 +8644,33 @@ button, input, select, textarea { font-family: inherit; }
 @container (max-width: 580px) { .stage-add-payment { grid-column: 1 / -1; margin-top: 10px; } }
 @container (max-width: 440px) { .stage-payment-fields { grid-template-columns: 1fr; } .stage-payment-form { padding: 15px; } .stage-receipt { flex-wrap: wrap; } }
 .stage-payment-history[open] { max-height: 400px; overflow: auto; scrollbar-width: thin; }
+
+/* Finalized status colors stay light and leave the profile header dimensions intact. */
+#studentProfileHeader { background: linear-gradient(115deg,#f5f7fa 0%,#fff 85%); }
+#studentProfileHeader[data-status="New Lead"] { background: linear-gradient(115deg,#eef1f6 0%,#fafbfc 60%,#fff 100%); }
+#studentProfileHeader[data-status="Contacted"] { background: linear-gradient(115deg,#e9f2ff 0%,#f7faff 60%,#fff 100%); }
+#studentProfileHeader[data-status="Interested"] { background: linear-gradient(115deg,#fff7d7 0%,#fffdf4 60%,#fff 100%); }
+#studentProfileHeader[data-status="Follow-up Required"] { background: linear-gradient(115deg,#fff0e5 0%,#fffaf6 60%,#fff 100%); }
+#studentProfileHeader[data-status="Converted"] { background: linear-gradient(115deg,#e4f4e9 0%,#f5fbf7 60%,#fff 100%); }
+#studentProfileHeader[data-status="Lost"] { background: linear-gradient(115deg,#f5e9ed 0%,#fcf8fa 60%,#fff 100%); }
+.student-status-workflow { margin: 0 0 20px; padding: 18px; border: 1px solid #e4e8ee; border-radius: 12px; background: #fafbfd; }
+.student-status-current { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.student-status-current small { flex-basis: 100%; color: #85909d; font-size: var(--text-caption); line-height: 1.6; }
+.student-status-form { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
+.student-status-form label { flex: 1; display: grid; gap: 7px; min-width: 0; color: #73808f; font-size: var(--text-caption); }
+.student-status-form .form-select { font-size: var(--text-caption); border-radius: 8px; min-height: 36px; }
+.student-status-form .btn { min-height: 36px; white-space: nowrap; }
+.student-status-drafts { display: grid; gap: 10px; margin-top: 16px; }
+.student-status-draft { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 8px; border: 1px solid #ecdfbe; background: #fffbf1; }
+.student-status-draft > div:first-child { display: grid; gap: 5px; }
+.student-status-draft strong { font-size: var(--text-caption); font-weight: 500; color: #5f5a49; }
+.student-status-draft small { font-size: var(--text-caption); line-height: 1.6; color: #908672; }
+.status-draft-label { display: inline-block; width: fit-content; margin-top: 5px; padding: 3px 6px; border-radius: 5px; background: #fff2ce; color: #866c35; font-size: var(--text-caption); }
+.status-review-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.status-review-actions button { border: 1px solid #dce3df; border-radius: 6px; background: #fff; color: #48755a; padding: 6px 10px; font-size: var(--text-caption); }
+.status-review-actions button[data-status-decision="reject"] { border-color: #e9dada; color: #a26464; }
+.status-review-actions button:disabled { opacity: .5; cursor: wait; }
+.notif-status-actions { margin: 10px 0; }
+@media(max-width:575px) { .student-status-form { flex-wrap: wrap; } .student-status-form label { flex-basis: 100%; } .student-status-workflow { padding: 14px; } }
+#studentProfileHeader .profile-progress-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#studentProfileHeader .profile-progress-label > strong { flex-shrink: 0; white-space: nowrap; }

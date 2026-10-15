@@ -43,7 +43,7 @@ test('D1 routes persist profiles, status, follow-up outcomes and payments',async
   assert.equal(state.students[0].name,"O'Connor");assert.equal(state.students[0].status,'Follow-up Required');assert.equal(state.leads[0].status,'Follow-up Required');
   assert.equal(state.followups[0].status,'Done');assert.equal(state.followups[0].outcome,'Discussed studio; visit agreed.');assert.ok(state.followups[0].completed_at);
   assert.equal((await call(env,'/api/payments','POST',{student_id:student.id,property_id:property.id,amount:15000,status:'Successful'})).status,201);
-  state=await (await call(env,'/api/state')).json();assert.equal(state.students[0].status,'Converted');assert.equal(state.leads[0].status,'Converted');assert.equal(state.payments[0].booking,'Confirmed');
+  state=await (await call(env,'/api/state')).json();assert.equal(state.students[0].status,'Follow-up Required');await call(env,`/api/students/${student.id}`,'PATCH',{status:'Converted'});state=await (await call(env,'/api/state')).json();assert.equal(state.students[0].status,'Converted');assert.equal(state.leads[0].status,'Converted');assert.equal(state.payments[0].booking,'Confirmed');
   assert.equal((await call(env,'/api/followups/missing','PATCH',{status:'Done',outcome:'Done'})).status,404);
   assert.equal((await call(env,`/api/students/${student.id}`,'PATCH',{status:'Invalid'})).status,400);
   assert.equal((await call(env,'/')).status,200);

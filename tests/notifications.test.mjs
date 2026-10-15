@@ -47,7 +47,7 @@ test('real activity reaches other users and read/dismiss state persists separate
   await call('alice','/api/followups/'+followup.id,'PATCH',{status:'Done',outcome:'Completed'});
   await call('alice','/api/students/'+student.id,'PATCH',{status:'Contacted'});
   feed=(await (await call('bob','/api/notifications')).json()).notifications;
-  assert.ok(!feed.some(n=>n.id.startsWith('reminder:'+followup.id)));assert.ok(feed.some(n=>n.title==='Student updated'&&n.message.includes('Contacted')));
+  assert.ok(!feed.some(n=>n.id.startsWith('reminder:'+followup.id)));assert.ok(feed.some(n=>n.title==='Status draft submitted'&&n.message.includes('Contacted')));
   await call('bob','/api/notifications/dismiss','POST',{ids:[eventId]});
   assert.ok(!(await (await call('bob','/api/notifications')).json()).notifications.some(n=>n.id===eventId));
   await call('bob','/api/notifications/read-all','POST',{});

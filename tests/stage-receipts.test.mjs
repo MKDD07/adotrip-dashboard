@@ -20,10 +20,10 @@ test('stage receipts auto-link assigned properties, preserve receipt metadata an
    await DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(createHash('sha256').update((role==='admin'?'a':'b').repeat(64)).digest('hex'),role,Date.now()+3600000).run();
   }
   const call=(path,body,role='agent',method='POST')=>worker.fetch(new Request('https://crm.example'+path,{method,headers:{Cookie:'crm_session='+(role==='admin'?'a':'b').repeat(64),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),env);
-  const student=await (await call('/api/students',{name:'Receipt Person',mobile:'123456',budget:250000,status:'Interested'})).json();
+  const student=await (await call('/api/students',{name:'Receipt Person',mobile:'123456',budget:250000,status:'Interested'},'admin')).json();
   const property=await (await call('/api/properties',{name:'Assigned apartment',location:'London',price:239000})).json();
   const unrelated=await (await call('/api/properties',{name:'Other apartment',location:'Toronto',price:300000})).json();
-  await call('/api/leads',{student_id:student.id,property_id:property.id,status:'Interested'});
+  await call('/api/leads',{student_id:student.id,property_id:property.id,status:'Interested'},'admin');
   let number=0;
   const receipt=(extra={})=>({property_id:property.id,payment_stage:'initial',payment_method:'UPI',amount:'10000.00',transaction_id:'TX-INITIAL',utr:'UTR-INITIAL',paid_at:new Date().toISOString(),notes:'Arrival deposit',request_key:'receipt-request-'+String(++number).padStart(10,'0'),...extra});
   const path='/api/students/'+student.id+'/payments';

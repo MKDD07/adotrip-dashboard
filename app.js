@@ -212,15 +212,15 @@ function renderLeads(){
  $('#kanban').innerHTML=stages.map(stage=>{
   const rows=data.leads.filter(l=>{const student=find('students',l.student_id),property=find('properties',l.property_id);return l.status===stage&&(!owner||student.agent===owner)&&(!query||[student.name,student.student_code,student.city,student.course,property.name,l.id,l.notes].join(' ').toLowerCase().includes(query))}),meta=stageMeta[stage],value=rows.reduce((sum,l)=>sum+Number(find('properties',l.property_id).price||find('students',l.student_id).budget||0),0);
   return `<section class="pipeline-column" data-drop-stage="${stage}" aria-label="${esc(meta.label)}"><header class="pipeline-column-heading"><div><span class="pipeline-stage-dot" style="--stage-color:${meta.color}"></span><h3>${meta.label}</h3><span class="pipeline-stage-count">${rows.length}</span></div></header><div class="pipeline-card-list">${rows.map(lead=>{
-   const student=find('students',lead.student_id),property=find('properties',lead.property_id),overdue=lead.followup&&lead.followup.slice(0,10)<today;
-   return `<article class="opportunity-card" draggable="true" data-lead-id="${esc(lead.id)}"><div class="opportunity-person">${personImage(student)}<div><button class="opportunity-name" type="button" data-student-profile="${esc(lead.student_id)}">${esc(student.name||lead.student_id)}</button><small class="student-reference opportunity-student-reference">${esc(studentReference(student))}</small></div><button type="button" class="opportunity-profile-btn" data-student-profile="${esc(lead.student_id)}" aria-label="Open ${esc(student.name||'student')} profile"><i data-lucide="arrow-up-right"></i></button></div><div class="opportunity-property"><i data-lucide="building-2"></i><span>${esc(property.name||'Property to be selected')}</span></div><div class="opportunity-details"><strong>${money(property.price||student.budget)}<small> / mo</small></strong>${lead.followup?`<span class="opportunity-date ${overdue?'overdue':''}" title="Follow-up date"><i data-lucide="calendar-days"></i>${pipelineDate(lead.followup)}</span>`:''}</div><footer class="opportunity-footer"><label class="opportunity-stage"><span class="visually-hidden">Stage for ${esc(student.name||lead.id)}</span><select data-lead-status="${esc(lead.id)}" ${movingLeads.has(lead.id)?'disabled':''}>${leadStages.map(value=>`<option value="${value}" ${value===lead.status?'selected':''}>${value==='New Lead'?'New enquiry':value==='Follow-up Required'?'Follow-up':value==='Converted'?'Booked':value}</option>`).join('')}</select></label></footer></article>`
+   const student=find('students',lead.student_id),property=find('properties',lead.property_id),overdue=lead.followup&&lead.followup.slice(0,10)<today,draft=(data.status_requests||[]).find(r=>r.entity==='leads'&&r.record_id===lead.id&&r.state==='Pending');
+   return `<article class="opportunity-card" draggable="true" data-lead-id="${esc(lead.id)}"><div class="opportunity-person">${personImage(student)}<div><button class="opportunity-name" type="button" data-student-profile="${esc(lead.student_id)}">${esc(student.name||lead.student_id)}</button><small class="student-reference opportunity-student-reference">${esc(studentReference(student))}</small>${draft?`<span class="status-draft-label">Draft: ${esc(draft.proposed_status)}</span>`:''}</div><button type="button" class="opportunity-profile-btn" data-student-profile="${esc(lead.student_id)}" aria-label="Open ${esc(student.name||'student')} profile"><i data-lucide="arrow-up-right"></i></button></div><div class="opportunity-property"><i data-lucide="building-2"></i><span>${esc(property.name||'Property to be selected')}</span></div><div class="opportunity-details"><strong>${money(property.price||student.budget)}<small> / mo</small></strong>${lead.followup?`<span class="opportunity-date ${overdue?'overdue':''}" title="Follow-up date"><i data-lucide="calendar-days"></i>${pipelineDate(lead.followup)}</span>`:''}</div><footer class="opportunity-footer"><label class="opportunity-stage"><span class="visually-hidden">Stage for ${esc(student.name||lead.id)}</span><select data-lead-status="${esc(lead.id)}" ${movingLeads.has(lead.id)?'disabled':''}>${leadStages.map(value=>`<option value="${value}" ${value===lead.status?'selected':''}>${value==='New Lead'?'New enquiry':value==='Follow-up Required'?'Follow-up':value==='Converted'?'Booked':value}</option>`).join('')}</select></label></footer></article>`
   }).join('')||`<div class="pipeline-empty"><i data-lucide="${query||owner?'search-x':'circle-dashed'}"></i><span>${query||owner?'No matching opportunities':'Ready for the next opportunity'}</span></div>`}</div></section>`
  }).join('');icons();
 }
 async function moveLead(id,status){
  if(movingLeads.has(id)||find('leads',id).status===status)return;
  movingLeads.add(id);renderLeads();
- try{await api(`/api/leads/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({status})});await load();notify(`Moved to ${stageMeta[status]?.label||status}`)}catch(error){notify(error.message)}finally{movingLeads.delete(id);renderLeads()}
+ try{const result=await api(`/api/leads/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({status})});await load();notify(result.draft?'Status draft submitted for admin approval':`Status finalized: ${stageMeta[status]?.label||status}`)}catch(error){notify(error.message)}finally{movingLeads.delete(id);renderLeads()}
 }
 $('#pipelineSearch').oninput=renderLeads;$('#pipelineOwner').onchange=renderLeads;
 $$('[data-pipeline-mode]').forEach(button=>button.onclick=()=>{pipelineMode=button.dataset.pipelineMode;$$('[data-pipeline-mode]').forEach(tab=>{tab.classList.toggle('active',tab===button);tab.setAttribute('aria-pressed',String(tab===button))});renderLeads()});
@@ -280,7 +280,7 @@ function bindForm(id,route){$(id).addEventListener('submit',async event=>{
  try{
   const body=Object.fromEntries(new FormData(event.target)),kind=id==='#propertyForm'?'property':id==='#studentForm'?'student':null;
   if(kind){delete body.image_file;const upload=photoUploads[kind];if($(`#${kind}ImageFile`).files.length){if(upload.error)throw Error(upload.error);body.image_data=await upload.promise}}
-  const out=await api(route,{method:'POST',body:JSON.stringify(body)});event.target.reset();if(kind)clearPhotoUpload(kind);closeModal(id.replace('Form','Modal'));await load();notify(`Saved successfully${out.id?' · '+out.id:''}`);
+  const out=await api(route,{method:'POST',body:JSON.stringify(body)});event.target.reset();if(kind)clearPhotoUpload(kind);closeModal(id.replace('Form','Modal'));await load();notify(out.draft?'Saved. Status draft sent for admin approval.':`Saved successfully${out.id?' · '+out.id:''}`);
  }catch(error){notify(error.message)}finally{if(button)button.disabled=false}
 })}
 $$('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));$$('[data-open-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.openView)));$('#menuToggle').onclick=()=>$('#sidebar').classList.toggle('open');$('#studentSearch').oninput=renderStudents;$('#studentStatus').onchange=renderStudents;$('#propertySearch').oninput=renderProperties;$$('.filter-chip').forEach(b=>b.onclick=()=>{$$('.filter-chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');propertyType=b.dataset.type;renderProperties()});$$('[data-event-filter]').forEach(b=>b.onclick=()=>{$$('[data-event-filter]').forEach(x=>x.classList.remove('active'));b.classList.add('active');calendarFilter=b.dataset.eventFilter;hideCalendarTooltip();calendar?.refetchEvents()});
@@ -324,6 +324,7 @@ function openStudentProfile(id){
 }
 let progressStudentId=null;
 function updateStudentProgress(student){
+ $('#studentProfileHeader')?.setAttribute('data-status',student.status||'');
  const values={'New Lead':0,'Contacted':25,'Interested':50,'Follow-up Required':75,'Converted':100,'Lost':0},value=values[student.status]??0,track=$('#profileProgressTrack'),fill=$('#profileProgressFill');
  $('#profileProgress').hidden=false;$('#profileProgressStage').textContent=student.status==='Lost'?'Closed · no booking':student.status==='Converted'?'Booking finalized':student.status;
  $('#profileProgressPercent').textContent=value+'%';track.setAttribute('aria-valuenow',String(value));track.setAttribute('aria-valuetext',`${student.status}: ${value}% of booking stages`);
@@ -435,9 +436,24 @@ async function ensureProfileExchangeRates(force=false){
  }catch{profileFxError='Rates unavailable. INR amounts remain available.';if(profileFx)profileFx={...profileFx,stale:true}}
  finally{profileFxLoading=false;updateProfilePaymentDisplay()}
 }
+const statusDecisions=new Set();
+function studentStatusMarkup(student){
+ const admin=signedInUser?.role==='admin',drafts=(data.status_requests||[]).filter(r=>r.student_id===student.id&&r.state==='Pending');
+ const own=drafts.find(r=>r.entity==='students'&&r.requested_by===signedInUser?.id);
+ return `<section class="student-status-workflow" aria-label="Student status"><div class="student-status-current"><span class="panel-kicker">CURRENT STATUS</span>${statusBadge(student.status)}<small>${admin?'Finalize a status or review the team’s drafts below.':'Status changes are drafts until an administrator approves them.'}</small></div><form id="profileStatusForm" class="student-status-form"><label for="profileStatus">${admin?'Final status':'Proposed status'}<select id="profileStatus" class="form-select" name="status">${studentStages.map(stage=>`<option value="${stage}" ${stage===(own?.proposed_status||student.status)?'selected':''}>${stage}</option>`).join('')}</select></label><button class="btn btn-dark btn-sm" type="submit">${admin?'Finalize status':'Submit draft'}</button></form>${drafts.length?`<div class="student-status-drafts">${drafts.map(draft=>`<article class="student-status-draft"><div><strong>${esc(draft.from_status)} <span aria-hidden="true">→</span> ${esc(draft.proposed_status)}</strong><small>${esc(draft.requested_by_name)} · ${draft.entity==='leads'?'Lead pipeline draft':'Student status draft'} · awaiting approval</small></div>${admin?`<div class="status-review-actions"><button type="button" data-status-decision="approve" data-status-request="${esc(draft.id)}" ${statusDecisions.has(draft.id)?'disabled':''}>Approve</button><button type="button" data-status-decision="reject" data-status-request="${esc(draft.id)}" ${statusDecisions.has(draft.id)?'disabled':''}>Reject</button></div>`:'<span class="status-draft-label">Draft</span>'}</article>`).join('')}</div>`:''}</section>`;
+}
+async function reviewStatusDraft(id,decision){
+ if(signedInUser?.role!=='admin'||statusDecisions.has(id)||!['approve','reject'].includes(decision))return;
+ const request=(data.status_requests||[]).find(r=>r.id===id),viewing=request&&selectedStudentId===request.student_id&&$('#studentsView')?.classList?.contains?.('active');
+ statusDecisions.add(id);$$('[data-status-request]').filter(button=>button.dataset.statusRequest===id).forEach(button=>button.disabled=true);renderNotifications();
+ try{
+  await api(`/api/status-requests/${encodeURIComponent(id)}/${decision}`,{method:'POST',body:'{}'});
+  await load();if(viewing&&data.students.some(s=>s.id===request.student_id))openStudentProfile(request.student_id);await refreshNotifications();notify(decision==='approve'?'Draft approved. Status finalized.':'Status draft rejected.');
+ }catch(error){notify(error.message)}finally{statusDecisions.delete(id);renderNotifications();if(selectedStudentId&&!stagePaymentDraft)renderStudentProfile()}
+}
 function renderStudentProfile(){
  const student=find('students',selectedStudentId);$('#deleteStudentBtn').hidden=!student.id||signedInUser?.role!=='admin';
- if(!student.id){$('#profileTitle').textContent='Select a student';$('#profileSubtitle').textContent='';$('#profilePortrait').innerHTML='';$('#profileProgress').hidden=true;$('#profileJourney').innerHTML='';$('#profileBody').innerHTML='<div class="empty-state">Select a student from the list.</div>';return}
+ if(!student.id){$('#studentProfileHeader')?.setAttribute('data-status','');$('#profileTitle').textContent='Select a student';$('#profileSubtitle').textContent='';$('#profilePortrait').innerHTML='';$('#profileProgress').hidden=true;$('#profileJourney').innerHTML='';$('#profileBody').innerHTML='<div class="empty-state">Select a student from the list.</div>';return}
  const profile=profileInfo(student),leads=data.leads.filter(l=>l.student_id===student.id),tasks=data.followups.filter(f=>f.student_id===student.id).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)),payments=data.payments.filter(p=>p.student_id===student.id),pending=tasks.filter(f=>f.status!=='Done'),done=tasks.filter(f=>f.status==='Done'),paid=payments.filter(p=>p.status==='Successful').reduce((sum,p)=>sum+Number(p.amount),0);
  updateStudentProgress(student);$('#profileTitle').textContent=student.name;$('#profileSubtitle').textContent=`${studentReference(student)} · ${student.agent||'Unassigned'}`;$('#profilePortrait').innerHTML=personImage(student,'profile-portrait');
  const info=(entries)=>`<dl class="profile-details">${entries.filter(([,value])=>value).map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`;
@@ -450,7 +466,7 @@ function renderStudentProfile(){
 <section class="profile-next-step"><div><span class="panel-kicker">NEXT ACTION</span><h3>${esc(pending[0]?.purpose|| (student.status==='Converted'?'Coordinate move-in':'Review enquiry'))}</h3><p>${esc(stageGuidance[student.status]||stageGuidance['New Lead'])}</p></div><i data-lucide="arrow-up-right"></i></section>
 `,
  followups:`<div class="followup-workspace">
- <form id="profileStatusForm" class="followup-status-form"><label for="profileStatus">Status</label><select id="profileStatus" class="form-select" name="status">${studentStages.map(stage=>`<option ${stage===student.status?'selected':''}>${stage}</option>`).join('')}</select><button class="followup-save-btn" type="submit">Save</button></form>
+
  <section class="followup-upcoming" aria-labelledby="followupUpcomingHeading">
   <div class="followup-section-heading"><h3 id="followupUpcomingHeading">Upcoming</h3><span>${pending.length}</span></div>
   <div class="followup-task-list">${pending.map(taskCard).join('')||'<p class="profile-empty">All caught up.</p>'}</div>
@@ -464,7 +480,7 @@ function renderStudentProfile(){
 <section class="profile-section"><h3 class="profile-tab-section-title"><i data-lucide="clipboard-list"></i>Accommodation requirements</h3>${info([['Preferred area',profile.preferred_area],['Apartment',profile.room_preference],['Meals',profile.food_preference],['Move-in',profile.move_in_date],['Duration',profile.stay_duration]])}<p class="profile-notes">${esc(student.notes||'No additional requirements.')}</p></section>`
  };
  const tabs=[['overview','Overview','layout-dashboard',null],['followups','Follow-ups','calendar-clock',pending.length],['properties','Properties','building-2',leads.length],['payments','Payments','credit-card',payments.length],['details','Details','user-round',null]];
- $('#profileBody').innerHTML=`<div class="profile-status-row">${statusBadge(student.status)}${profile.is_demo?'<span class="demo-label">DEMO PROFILE</span>':''}<div class="profile-contact"><a class="profile-contact-icon contact-call" href="tel:${esc(student.mobile)}" title="Call student" aria-label="Call ${esc(student.name)}"><i data-lucide="phone"></i></a>${student.email?`<a class="profile-contact-icon contact-email" href="mailto:${esc(student.email)}" title="Email student" aria-label="Email ${esc(student.name)}"><i data-lucide="mail"></i></a>`:''}</div></div>
+ $('#profileBody').innerHTML=`${studentStatusMarkup(student)}<div class="profile-status-row">${statusBadge(student.status)}${profile.is_demo?'<span class="demo-label">DEMO PROFILE</span>':''}<div class="profile-contact"><a class="profile-contact-icon contact-call" href="tel:${esc(student.mobile)}" title="Call student" aria-label="Call ${esc(student.name)}"><i data-lucide="phone"></i></a>${student.email?`<a class="profile-contact-icon contact-email" href="mailto:${esc(student.email)}" title="Email student" aria-label="Email ${esc(student.name)}"><i data-lucide="mail"></i></a>`:''}</div></div>
  <div class="student-profile-tabs" role="tablist" aria-label="Student profile sections">${tabs.map(([key,label,icon,count])=>`<button type="button" id="student-tab-${key}" class="student-profile-tab ${activeProfileTab===key?'active':''}" role="tab" aria-selected="${activeProfileTab===key}" aria-controls="student-panel-${key}" tabindex="${activeProfileTab===key?'0':'-1'}" data-profile-tab="${key}"><i data-lucide="${icon}"></i>${label}${count===null?'':`<span>${count}</span>`}</button>`).join('')}</div>
  ${tabs.map(([key])=>`<div id="student-panel-${key}" class="student-profile-panel" role="tabpanel" aria-labelledby="student-tab-${key}" ${activeProfileTab===key?'':'hidden'}>${panelContents[key]}</div>`).join('')}`;
  icons();
@@ -521,6 +537,7 @@ function selectProfileTab(key,focus=false){
  $$('#profileBody [data-profile-tab]').forEach(button=>{const active=button.dataset.profileTab===key;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;if(active&&focus)button.focus()});
  $$('#profileBody .student-profile-panel').forEach(panel=>panel.hidden=panel.id!=='student-panel-'+key);icons();
 }
+$('#profileBody').addEventListener('click',event=>{const button=event.target.closest('[data-status-decision]');if(button)reviewStatusDraft(button.dataset.statusRequest,button.dataset.statusDecision)});
 $('#profileBody').addEventListener('input',event=>{if(stagePaymentDraft&&event.target.closest('[data-stage-payment-form]')&&event.target.name)stagePaymentDraft[event.target.name]=event.target.value});
 $('#profileBody').addEventListener('change',event=>{
  if(event.target.id==='paymentAssignedProperty'&&!stagePaymentBusy){paymentPropertySelection.set(selectedStudentId,event.target.value);stagePaymentDraft=null;stagePaymentError='';updateProfilePaymentDisplay()}
@@ -536,10 +553,11 @@ $('#profileBody').addEventListener('submit',async event=>{
  const button=form.querySelector('button[type="submit"]'),recordId=selectedStudentId;button.disabled=true;$('#profileError').hidden=true;
  try{
   const payload=Object.fromEntries(new FormData(form));
-  if(form.id==='profileStatusForm')await api(`/api/students/${encodeURIComponent(selectedStudentId)}`,{method:'PATCH',body:JSON.stringify(payload)});
+  let statusResult;
+  if(form.id==='profileStatusForm')statusResult=await api(`/api/students/${encodeURIComponent(selectedStudentId)}`,{method:'PATCH',body:JSON.stringify(payload)});
   else if(form.id==='profileFollowupForm')await api('/api/followups',{method:'POST',body:JSON.stringify({...payload,student_id:selectedStudentId})});
   else await api(`/api/followups/${encodeURIComponent(form.dataset.completeFollowup)}`,{method:'PATCH',body:JSON.stringify({status:'Done',outcome:payload.outcome})});
-  await load();if(form.id==='profileStatusForm')openStudentProfile(recordId);notify('Student record updated');
+  await load();if(form.id==='profileStatusForm')openStudentProfile(recordId);notify(form.id==='profileStatusForm'?(statusResult?.draft?'Status draft submitted for admin approval':statusResult?.unchanged?'Status unchanged':'Status finalized'):'Student record updated');
  }catch(error){$('#profileError').textContent=error.message;$('#profileError').hidden=false}finally{button.disabled=false}
 });
 $('#logoutBtn').onclick=async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});location.replace('/login')};
@@ -679,6 +697,7 @@ function renderNotifications(){
       ${item.priority==='urgent'?`<span class="notif-tag badge-urgent">Urgent</span>`:''}
      </div>
      <p class="notif-message">${esc(item.actorName&&item.message?.startsWith(item.actorName+' · ')?item.message.slice(item.actorName.length+3):item.message)}</p>
+     ${signedInUser?.role==='admin'&&item.statusRequestId&&item.statusRequestState==='Pending'?`<div class="status-review-actions notif-status-actions"><button type="button" data-status-decision="approve" data-status-request="${esc(item.statusRequestId)}" ${statusDecisions.has(item.statusRequestId)?'disabled':''}>Approve</button><button type="button" data-status-decision="reject" data-status-request="${esc(item.statusRequestId)}" ${statusDecisions.has(item.statusRequestId)?'disabled':''}>Reject</button></div>`:''}
      <div class="notif-meta-row">
       ${item.actorName?`<span class="notif-author">${esc(item.actorId===signedInUser?.id?'You':item.actorName)}</span><span class="notif-meta-dot" aria-hidden="true">·</span>`:''}<span>${esc(item.time)}</span>
      </div>
@@ -712,6 +731,7 @@ function initNotificationHandlers(){
  const listEl=$('#notificationList');
  if(listEl){
   listEl.onclick=e=>{
+   const review=e.target.closest?.('[data-status-decision]');if(review){e.stopPropagation();reviewStatusDraft(review.dataset.statusRequest,review.dataset.statusDecision);return}
    const dismissBtn=e.target.closest?.('[data-notif-dismiss]');
    if(dismissBtn){
     e.stopPropagation();

@@ -1,3 +1,4 @@
+import { StatusError, changeStatus, decideStatus, creationStatusStatements, statusEvent } from './status-approvals.mjs';
 import { PaymentError, recordStagePayment } from './stage-payments.mjs';
 import { exchangeRatesResponse } from './exchange-rates.mjs';
 import { handleAuth, sessionUser, requireUser, AuthError } from './auth.mjs';
@@ -15,7 +16,12 @@ function choice(value, choices, field) { if (!choices.includes(value)) throw new
 function number(value, field) { const out = Number(value || 0); if (!Number.isFinite(out) || out < 0) throw new HttpError(400, `${field} must be a non-negative number`); return out; }
 const stmt = (db, sql, values = []) => db.prepare(sql).bind(...values);
 async function exists(db, table, value) { const active=table==='students'?' AND archived_at IS NULL':['leads','followups','payments'].includes(table)?' AND student_id IN (SELECT id FROM students WHERE archived_at IS NULL)':'';if (!await stmt(db, `SELECT id FROM ${table} WHERE id=?${active}`, [value]).first()) throw new HttpError(404, `${table.slice(0, -1)} not found`); }
-async function state(db) { const rows = await db.batch(TABLES.map(t => db.prepare(`SELECT * FROM ${t}${t==='students'?' WHERE archived_at IS NULL':t==='properties'?'':' WHERE student_id IN (SELECT id FROM students WHERE archived_at IS NULL)'} ORDER BY ${t === 'followups' ? 'starts_at' : t === 'payments' ? 'paid_at DESC' : 'created_at DESC'}`))); return Object.fromEntries(TABLES.map((t, i) => [t, rows[i].results])); }
+async function state(db) {
+ const queries=TABLES.map(t=>db.prepare(`SELECT * FROM ${t}${t==='students'?' WHERE archived_at IS NULL':t==='properties'?'':' WHERE student_id IN (SELECT id FROM students WHERE archived_at IS NULL)'} ORDER BY ${t==='followups'?'starts_at':t==='payments'?'paid_at DESC':'created_at DESC'}`));
+ queries.push(db.prepare("SELECT r.* FROM status_requests r JOIN students s ON s.id=r.student_id WHERE r.state='Pending' AND s.archived_at IS NULL ORDER BY r.created_at DESC"));
+ const rows=await db.batch(queries);
+ return {...Object.fromEntries(TABLES.map((t,i)=>[t,rows[i].results])),status_requests:rows[TABLES.length].results};
+}
 function studentInsert(db, x, image = null, recordId = id('STU')) { return { id: recordId, statement: stmt(db, 'INSERT INTO students(id,name,mobile,email,city,course,budget,agent,status,notes,profile_json,image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [recordId, required(x.name, 'Name'), required(x.mobile, 'Mobile'), optional(x.email), optional(x.city), optional(x.course), number(x.budget, 'Budget'), optional(x.agent) || 'Arjun Mehta', choice(x.status || 'New Lead', STATUSES, 'status'), optional(x.notes), x.profile && typeof x.profile==='object' ? JSON.stringify(x.profile) : null, image]) }; }
 
 function parsePhoto(value){
@@ -77,6 +83,7 @@ async function handleApi(request, env, path, user) {
       stmt(db,'DELETE FROM notification_receipts WHERE notification_id IN (SELECT id FROM crm_activity WHERE student_id=?) OR EXISTS (SELECT 1 FROM followups f WHERE f.student_id=? AND notification_id LIKE \'reminder:\'||f.id||\':%\')',[recordId,recordId]),
       stmt(db,'DELETE FROM crm_activity WHERE student_id=?',[recordId]),
       ...['leads','followups','payments'].map(table=>stmt(db,`DELETE FROM ${table} WHERE student_id=?`,[recordId])),
+      stmt(db,'DELETE FROM status_requests WHERE student_id=?',[recordId]),
       stmt(db,'DELETE FROM students WHERE id=?',[recordId]),
       activityStatement(db,user,'students','deleted',{id:recordId,name:'Student record'})
     ]);
@@ -86,6 +93,8 @@ async function handleApi(request, env, path, user) {
   let x; try { x = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON'); }
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw new HttpError(400, 'Expected a JSON object');
   if (request.method === 'POST') {
+    const decisionMatch=path.match(/^\/api\/status-requests\/([^/]+)\/(approve|reject)$/);
+    if(decisionMatch)return json(await decideStatus(db,user,decodeURIComponent(decisionMatch[1]),decisionMatch[2]));
     const receiptMatch=path.match(/^\/api\/students\/([^/]+)\/payments$/);
     if(receiptMatch)return json(await recordStagePayment(db,user,decodeURIComponent(receiptMatch[1]),x),201);
     const restoreMatch=path.match(/^\/api\/students\/([^/]+)\/restore$/);
@@ -97,11 +106,15 @@ async function handleApi(request, env, path, user) {
       await db.batch([stmt(db,'UPDATE students SET archived_at=NULL,archived_by=NULL WHERE id=? AND archived_at IS NOT NULL',[recordId]),activityStatement(db,user,'students','restored',{id:recordId,name:'Student record'})]);
       return json({ok:true});
     }
-    if (path === '/api/students') { const photo=parsePhoto(x.image_data),recordId=id('STU'),record=studentInsert(db,x,photo?`/api/media/students/${recordId}`:null,recordId);await persistPhoto(env,`students/${recordId}`,photo,()=>db.batch([record.statement,activityStatement(db,user,'students','created',{...x,id:recordId})]));return json({id:recordId},201); }
+    if (path === '/api/students') {
+      const desired=choice(x.status||'New Lead',STATUSES,'status'),actual=user.role==='admin'?desired:'New Lead',photo=parsePhoto(x.image_data),recordId=id('STU'),record=studentInsert(db,{...x,status:actual},photo?`/api/media/students/${recordId}`:null,recordId);
+      const review=creationStatusStatements(db,user,{entity:'students',id:recordId,student_id:recordId,name:x.name,status:desired});
+      await persistPhoto(env,`students/${recordId}`,photo,()=>db.batch([record.statement,activityStatement(db,user,'students','created',{...x,status:actual,id:recordId}),...review]));return json({id:recordId,draft:user.role!=='admin'&&desired!=='New Lead'},201);
+    }
     if (path === '/api/students/import') {
       if (!Array.isArray(x.rows) || x.rows.length > 1000) throw new HttpError(400, 'Import up to 1,000 rows at a time');
       let added = 0, skipped = 0;
-      for (const row of x.rows) { try { const record=studentInsert(db,row);await db.batch([record.statement,activityStatement(db,user,'students','created',{...row,id:record.id})]); added++; } catch (error) { if (error instanceof HttpError || /UNIQUE constraint/.test(error.message)) skipped++; else throw error; } }
+      for (const row of x.rows) { try { const desired=choice(row.status||'New Lead',STATUSES,'status'),actual=user.role==='admin'?desired:'New Lead',record=studentInsert(db,{...row,status:actual});await db.batch([record.statement,activityStatement(db,user,'students','created',{...row,status:actual,id:record.id}),...creationStatusStatements(db,user,{entity:'students',id:record.id,student_id:record.id,name:row.name,status:desired})]); added++; } catch (error) { if (error instanceof HttpError || /UNIQUE constraint/.test(error.message)) skipped++; else throw error; } }
       return json({ added, skipped });
     }
     if (path === '/api/properties') {
@@ -116,15 +129,21 @@ async function handleApi(request, env, path, user) {
       if (x.property_id) await exists(db, 'properties', x.property_id);
       const recordId = id(path === '/api/leads' ? 'LEAD' : path === '/api/followups' ? 'FU' : 'TXN');
       if (path === '/api/leads') {
-        const status = choice(x.status || 'New Lead', STATUSES, 'status');
-        await db.batch([stmt(db, 'INSERT INTO leads(id,student_id,property_id,status,followup,notes) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, optional(x.property_id), status, optional(x.followup), optional(x.notes)]), stmt(db, 'UPDATE students SET status=? WHERE id=?', [status, x.student_id]),activityStatement(db,user,'leads','created',{...x,id:recordId})]);
+        const desired=choice(x.status||'New Lead',STATUSES,'status'),status=user.role==='admin'?desired:'New Lead';
+        const student=await stmt(db,'SELECT * FROM students WHERE id=?',[x.student_id]).first();
+        const statements=[stmt(db,'INSERT INTO leads(id,student_id,property_id,status,followup,notes) VALUES(?,?,?,?,?,?)',[recordId,x.student_id,optional(x.property_id),status,optional(x.followup),optional(x.notes)]),activityStatement(db,user,'leads','created',{...x,status,id:recordId})];
+        if(user.role==='admin'){
+          statements.push(stmt(db,'UPDATE students SET status=? WHERE id=?',[status,x.student_id]));
+          if(student.status!==status)statements.push(statusEvent(db,user,'status_finalized',student.id,`${student.name} · ${student.status} → ${status}`),stmt(db,"UPDATE status_requests SET state='Superseded',decided_at=? WHERE student_id=? AND state='Pending'",[new Date().toISOString(),student.id]));
+        }else statements.push(...creationStatusStatements(db,user,{entity:'leads',id:recordId,student_id:x.student_id,name:student.name,status:desired}));
+        await db.batch(statements);return json({id:recordId,draft:user.role!=='admin'&&desired!=='New Lead'},201);
       } else if (path === '/api/followups') {
         const date = required(x.starts_at, 'Date and time'); if (Number.isNaN(Date.parse(date))) throw new HttpError(400, 'Invalid follow-up date');
         const followup=stmt(db, 'INSERT INTO followups(id,student_id,starts_at,purpose,priority,status) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, date, choice(x.purpose, ['Callback', 'Property discussion', 'Property visit', 'Payment reminder'], 'purpose'), choice(x.priority || 'Medium', ['Low', 'Medium', 'High'], 'priority'), 'Pending']);await db.batch([followup,activityStatement(db,user,'followups','created',{...x,id:recordId})]);
       } else {
         const status = choice(x.status, ['Successful', 'Pending', 'Failed', 'Refunded'], 'payment status');
-        const statements = [stmt(db, 'INSERT INTO payments(id,student_id,property_id,amount,status,booking) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, optional(x.property_id), number(x.amount, 'Amount'), status, status === 'Successful' ? 'Confirmed' : 'On hold'])];
-        if (status === 'Successful') statements.push(stmt(db, "UPDATE leads SET status='Converted' WHERE student_id=? AND property_id=?", [x.student_id, optional(x.property_id)]), stmt(db, "UPDATE students SET status='Converted' WHERE id=?", [x.student_id]));
+        const statements = [stmt(db, 'INSERT INTO payments(id,student_id,property_id,amount,status,booking) VALUES(?,?,?,?,?,?)', [recordId, x.student_id, optional(x.property_id), number(x.amount, 'Amount'), status, status === 'Successful' && user.role==='admin' ? 'Confirmed' : 'On hold'])];
+
         statements.push(activityStatement(db,user,'payments','created',{...x,id:recordId}));await db.batch(statements);
       }
       return json({ id: recordId }, 201);
@@ -139,12 +158,7 @@ async function handleApi(request, env, path, user) {
         const outcome = status === 'Done' ? required(x.outcome, 'Follow-up outcome') : optional(x.outcome);
         const update=stmt(db, 'UPDATE followups SET status=?,outcome=?,completed_at=? WHERE id=?', [status, outcome, status === 'Done' ? new Date().toISOString() : null, recordId]);const previous=await stmt(db,'SELECT * FROM followups WHERE id=?',[recordId]).first();await db.batch([update,activityStatement(db,user,'followups','updated',{...previous,...x})]);
       } else {
-        const status = choice(x.status, STATUSES, 'status');
-        const statements = [stmt(db, `UPDATE ${table} SET status=? WHERE id=?`, [status, recordId])];
-        if (table === 'leads') statements.push(stmt(db, 'UPDATE students SET status=? WHERE id=(SELECT student_id FROM leads WHERE id=?)', [status, recordId]));
-        // A profile status update keeps all active opportunities in step.
-        else statements.push(stmt(db, "UPDATE leads SET status=? WHERE student_id=? AND status NOT IN ('Converted','Lost')", [status, recordId]));
-        const previous=await stmt(db,`SELECT * FROM ${table} WHERE id=?`,[recordId]).first();statements.push(activityStatement(db,user,table,'updated',{...previous,...x,label:null}));await db.batch(statements);
+        return json(await changeStatus(db,user,table,recordId,x.status));
       }
       return json({ ok: true });
     }
@@ -175,7 +189,7 @@ export default {
    if(path==='/api/images'&&request.method==='GET')return imageSearch(request,env,context);
    return await handleApi(request,env,path,user);
   }catch(error){
-   if(error instanceof AuthError||error instanceof HttpError||error instanceof PaymentError)return json({error:error.message},error.status);
+   if(error instanceof AuthError||error instanceof HttpError||error instanceof PaymentError||error instanceof StatusError)return json({error:error.message},error.status);
    if(/UNIQUE constraint/.test(error.message))return json({error:'Duplicate email or mobile'},409);
    console.error('CRM request failed',error);return json({error:'The request could not be completed. Please retry.'},503);
   }
