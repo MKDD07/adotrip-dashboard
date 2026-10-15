@@ -8688,7 +8688,7 @@ button, input, select, textarea { font-family: inherit; }
 .student-list-toolbar > label:not(.student-list-search) { flex: 0 0 190px; }
 .student-list-toolbar > .btn { flex-shrink: 0; min-height: 38px; font-size: var(--text-caption); }
 .student-list-panel .form-control,.student-list-panel .form-select { min-width: 0; border-color: #e1e5ec; border-radius: 8px; font-size: var(--text-caption); min-height: 38px; background-color: #fff; }
-.student-list-filters { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; padding-bottom: 20px; }
+.student-list-filters { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 14px; padding-bottom: 20px; }
 .student-list-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 16px 0; border-top: 1px solid #eef0f3; color: #87919d; font-size: var(--text-caption); }
 .student-list-summary strong { font-size: var(--text-body); font-weight: 500; color: #323c47; }
 .student-list-summary small { font-size: inherit; }
@@ -8780,5 +8780,45 @@ button, input, select, textarea { font-family: inherit; }
  #dashboardView .lead-health-card .health-overview { padding: 0; gap: 5px; }
  #dashboardView .lead-health-card #statusChart.conversion-ring { flex-basis: 84px; min-width: 84px; width: 84px; height: 84px; }
  #dashboardView .lead-health-card .conversion-ring-center strong { font-size: 25px; }
- #dashboardView .lead-health-card .conversion-ring-center span { font-size: 10px; }
+ #dashboardView .lead-health-card .conversion-ring-center span { font-size: 8px; }
 }
+
+/* Compact directory: primary filters, a single property preview, and quick contact actions. */
+.student-list-heading { background: #fafbf9; border: 1px solid #e9ece6; padding: 24px 28px; }
+.student-list-heading p { color: #838b95; font-size: 12px; }
+.student-list-heading .eyebrow { color: #859080; }
+.student-list-primary-filters { padding-bottom: 12px; gap: 12px; }
+.student-list-more-filters { margin: 0 0 14px; }
+.student-list-more-filters summary { width: fit-content; cursor: pointer; font-size: 12px; color: #637080; padding: 5px 0; }
+.student-list-more-filters summary span { color: #9b8547; }
+.student-list-more-filters[open] .student-list-filters { padding: 14px 0 4px; grid-template-columns: repeat(5,minmax(0,1fr)); }
+.student-list-summary { gap: 8px 20px; font-size: 11px; padding: 12px 0; }
+.student-list-table { min-width: 1250px; }
+.student-list-table th,.student-list-table td { padding: 16px 12px; }
+.student-list-table th:first-child { width: 200px; }
+.student-list-table th:nth-child(2) { width: 130px; }
+.student-list-table th:nth-child(4) { width: 240px; }
+.student-list-table th:nth-child(6) { width: 150px; }
+.student-list-table th:nth-child(7) { width: 165px; }
+.student-list-table td { vertical-align: top; }
+.student-list-person strong { font-size: 13px; }
+.student-list-contact { display: flex; gap: 7px; margin: 10px 0 0 42px; }
+.student-list-contact .profile-contact-icon { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: auto; height: 27px; border-radius: 6px; padding: 0 8px; font-size: 10px; text-decoration: none; }
+.student-list-contact svg { width: 12px; height: 12px; }
+.student-list-property { align-items: flex-start; margin-bottom: 0; gap: 10px; }
+.student-list-property img { width: 40px; height: 40px; }
+.student-list-property strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.5; }
+.student-list-property small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; margin-top: 3px; }
+.student-list-property > div { flex: 1; min-width: 0; }
+.student-list-more-properties { display: block; padding: 0; margin: 7px 0 0 50px; border: 0; background: transparent; font-size: 10px; color: #697f92; cursor: pointer; }
+.student-list-more-properties:hover { text-decoration: underline; }
+.student-list-country { font-size: 12px; }
+.student-list-table td > small { font-size: 10px; }
+@media(max-width:991px) { .student-list-more-filters[open] .student-list-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:575px) { .student-list-contact { margin-left: 35px; } }
+.student-list-primary-filters { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.student-list-table th:nth-child(3) { width: 155px; }
+.student-list-table th:nth-child(5) { width: 155px; }
+.student-list-table th:nth-child(8) { width: 160px; }
+.student-list-table td:nth-child(5) > small { white-space: nowrap; }
+@media(max-width:991px) { .student-list-primary-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } }

@@ -42,7 +42,7 @@ test('clicking a list row opens Overview in the correct pending/finalized worksp
  const {el,run}=setup();
  el('#studentListYear').value='2025';el('#studentListMonth').value='09';
  run("activeProfileTab='payments';showView('directory')");assert.equal(el('#viewTitle').textContent,'Students');
- el('#studentListRows').listeners.click({target:{closest:()=>({dataset:{directoryRow:'B'}})}});
+ el('#studentListRows').listeners.click({target:{closest:selector=>selector==='a'?null:({dataset:{directoryRow:'B'}})}});
  assert.equal(el('#profileTitle').textContent,'Kabir Khan');assert.equal(el('#viewTitle').textContent,'Finalized');assert.match(el('#profileBody').innerHTML,/id="student-tab-overview" class="student-profile-tab active"/);assert.equal(el('#returnToStudentList').hidden,false);
  el('#returnToStudentList').onclick();assert.equal(el('#viewTitle').textContent,'Students');assert.equal(el('#studentListYear').value,'2025');assert.equal(el('#studentListMonth').value,'09');assert.equal(el('#returnToStudentList').hidden,true);
 });
@@ -57,4 +57,14 @@ test('country counts and both filters use assigned property destinations without
  el('#propertyCountry').value='United Kingdom';run('renderProperties()');assert.match(el('#propertyGrid').innerHTML,/Bloomsbury Studio/);
  run("data.students[1].profile_json=JSON.stringify({destination_country:'united kingdom'})");
  assert.equal(json('countryStudentCounts(data.students).rows[0].count'),2);
+});
+
+test('quick contact links do not open a student profile and multiple properties stay compact',()=>{
+ const {run,el}=setup();
+ run("data.properties.push({id:'P2',name:'Second property',location:'London, United Kingdom',price:200000});data.leads.push({student_id:'A',property_id:'P2',status:'Interested'});renderStudentList()");
+ const html=el('#studentListRows').innerHTML;
+ assert.match(html,/href="tel:\+919876543210"/);assert.match(html,/href="mailto:anika@example.com"/);
+ assert.match(html,/\+1 more property/);assert.doesNotMatch(html,/Second property/);
+ el('#studentListRows').listeners.click({target:{closest:selector=>selector==='a'?{}:null}});
+ assert.equal(el('#profileTitle').textContent,'');
 });
