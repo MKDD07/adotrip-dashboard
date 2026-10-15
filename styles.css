@@ -8523,3 +8523,9 @@ button, input, select, textarea { font-family: inherit; }
 .dashboard-skeleton-table-row .skeleton-status { width: 100%; max-width: 62px; margin: 0; }
 #dashboardView[data-load-state="loading"] #dashboardHeroFacts > span,
 #dashboardView[data-load-state="error"] #dashboardHeroFacts > span { color: transparent; background: rgba(220,222,224,.65); border-radius: 5px; }
+
+.student-reference { font-variant-numeric: tabular-nums; letter-spacing: .025em; white-space: nowrap; }
+.opportunity-student-reference { display: block; color: #858b94; font-size: var(--text-caption); line-height: 1.5; margin-top: 3px; }
+#todaySchedule .schedule-copy .schedule-student-meta { display: flex; align-items: center; gap: 7px; }
+.schedule-student-meta > .student-reference { flex: 0 0 auto; }
+.schedule-student-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
